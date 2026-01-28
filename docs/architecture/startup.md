@@ -18,3 +18,4 @@
 - `globalIAMSys.Init(...)` 背景啟動（權限/身份）
 
 > 建議讀碼方式：先把 `serverMain()` 當作「總索引」，遇到不熟的 subsystem 先記路徑，不要一開始就鑽到底。
+> 
