@@ -1,0 +1,18 @@
+{
+  "name": "minio-knowledge",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "docs": "vitepress dev docs --host 0.0.0.0 --port 4173",
+    "build": "vitepress build docs",
+    "serve": "vitepress preview docs --host 0.0.0.0 --port 4173"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "vitepress": "^1.0.0-rc.44"
+  }
+}
