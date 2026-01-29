@@ -75,3 +75,7 @@
 - [ ] `cmd/object-api-interface.go`：確認 PutObject signature（opts/headers）
 - [ ] `cmd/erasure-server-pool.go`：確認 PutObject 是如何選 set / lock / write quorum
 - [ ] `cmd/erasure-object.go`：確認最終寫入流程（temp + rename + xl.meta）
+
+
+## 6. 本輪進度
+- 已建立 PutObject trace 的骨架與待辦清單；下一輪會把 route matcher 與實際 handler/函式鏈補齊（以 `cmd/api-router.go` 與 `cmd/object-handlers.go` 為主）。

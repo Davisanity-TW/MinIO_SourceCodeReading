@@ -66,3 +66,7 @@ Healing 最終仍需要走到「對 set 做重建」的那層。
   - healing stuck
   - insufficient read quorum
   - checksum mismatch
+
+
+## 6. 本輪進度
+- 已補上 Healing 的分類/觸發點/調度觀察點；下一輪會定位 background healing 的啟動點與 scheduler 入口（以 `serverMain`/`initBackground*` 為主）。
