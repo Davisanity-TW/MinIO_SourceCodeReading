@@ -31,6 +31,13 @@ export default defineConfig({
           { text: 'Erasure', link: '/architecture/erasure' },
           { text: 'IAM', link: '/architecture/iam' }
         ]
+      },
+      {
+        text: 'Trace（路徑追蹤）',
+        items: [
+          { text: 'PutObject', link: '/trace/putobject' },
+          { text: 'Healing', link: '/trace/healing' }
+        ]
       }
     ]
   }
