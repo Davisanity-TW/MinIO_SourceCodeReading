@@ -1,10 +1,9 @@
 # 更新日誌
 
-- 2026-01-30 09:01：補齊 `canceling remote connection`：追到 LastPing/LastPong 更新點與 ping/pong 呼叫鏈（grid）
-- None：補齊 ：追到 LastPing/LastPong 更新點與 ping/pong 呼叫鏈（grid）
-- 2026-01-30 08:51：新增 troubleshooting：`canceling remote connection`（grid ping timeout ~60s 的可能原因與排查）
+- 2026-01-30 14:00：補齊 PutObject 路由 matcher（Copy/Extract/Append reject/Multipart part）與 Healing 新盤自動修復呼叫鏈（initAutoHeal → healFreshDisk → healErasureSet）。
+- 2026-01-30 09:01：補齊 `canceling remote connection`：追到 LastPing/LastPong 更新點與 ping/pong 呼叫鏈（grid）。
+- 2026-01-30 08:51：新增 troubleshooting：`canceling remote connection`（grid ping timeout ~60s 的可能原因與排查）。
 - 2026-01-30 08:08：手動更新（補上 06:00 漏跑）。開始補 PutObject/Healing 的實際檔案/函式對照點。
 - 2026-01-29 22:22：手動補推（排程改為 06/14/22 後，22:00 之前未生效）。PutObject/Healing trace 補充『本輪進度』與下一步 TODO。
 - 2026-01-29：新增 Trace 專區（PutObject / Healing）與側邊欄連結。
 - 2026-01-28：初始化知識庫網站骨架。
-- 2026-01-30 14:00：補齊 PutObject 路由 matcher（Copy/Extract/Append reject/Multipart part）與 Healing 新盤自動修復呼叫鏈（initAutoHeal → healFreshDisk → healErasureSet）。
