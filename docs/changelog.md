@@ -1,6 +1,6 @@
 # 更新日誌
 
-- ：Healing：補充  預設實體路徑（<drivePath>/.minio.sys/buckets/.healing.bin）與內容/限制（非完整 object 清單）
+- 2026-01-30 22:00：PutObject/Healing：補齊本機 source tree 的具體函式/檔案對照（PutObjectHandler pipeline、erasureServerPools/erasureSets/erasureObjects PutObject；Healing 的 healErasureSet 實作在 cmd/global-heal.go），並修正 changelog 首行缺日期。
 - 2026-01-30 14:00：補齊 PutObject 路由 matcher（Copy/Extract/Append reject/Multipart part）與 Healing 新盤自動修復呼叫鏈（initAutoHeal → healFreshDisk → healErasureSet）。
 - 2026-01-30 09:01：補齊 `canceling remote connection`：追到 LastPing/LastPong 更新點與 ping/pong 呼叫鏈（grid）。
 - 2026-01-30 08:51：新增 troubleshooting：`canceling remote connection`（grid ping timeout ~60s 的可能原因與排查）。

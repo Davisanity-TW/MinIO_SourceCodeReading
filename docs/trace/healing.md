@@ -102,10 +102,17 @@ err = z.serverPools[poolIdx].sets[setIdx].healErasureSet(ctx, tracker.QueuedBuck
 
 ## 3) Erasure heal 的核心動作（你下一步要追的最底層）
 
-有了上面的入口後，你接下來的讀碼目標會是：
-- `(*erasureSets).healErasureSet(...)`（實作位置依版本，通常在 `cmd/erasure-heal*.go` / `cmd/erasure-sets*.go`）
-- `(*erasureObjects).HealObject(...)` / `HealBucket(...)`（名稱依版本）
+有了上面的入口後，你接下來的讀碼目標會是（以 `/home/ubuntu/clawd/minio` 這份 source tree 對照）：
+
+- `cmd/global-heal.go`：`func (er *erasureObjects) healErasureSet(ctx context.Context, buckets []string, tracker *healingTracker) error`
+  - 這裡會先對每個 bucket 呼叫：`objAPI.HealBucket(ctx, bucket, madmin.HealOpts{ScanMode: ...})`
+  - 接著依 disk 的 `NRRequests`/CPU core 估算 worker 數量（`globalHealConfig.GetWorkers()` 可覆寫）
+  - 然後進入「逐 bucket 掃描 object、分派到 worker heal」的主迴圈（同檔案後段可繼續往下追）
+
+而更底層的動作仍然是：
 - 讀 `xl.meta` → 判斷 shard/parts → 滿足 read quorum → Reed-Solomon reconstruct → 寫回缺片 → 更新 meta
+
+> 小結：新盤自動 heal 的呼叫鏈已經很「直通」：`healFreshDisk()`（`cmd/background-newdisks-heal-ops.go`）→ `sets[setIdx].healErasureSet()`（同檔案呼叫點）→ `cmd/global-heal.go: (*erasureObjects).healErasureSet()`。
 
 你最關心的問題（建議對照到 code 的 checklist）：
 - **heal quorum 怎麼算？**（read quorum / write quorum）

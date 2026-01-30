@@ -67,7 +67,32 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 5) quota / lifecycle / replication（視設定而定）
 6) 呼叫 ObjectLayer 的 `PutObject` / `PutObjectTags` / 相關 API
 
-> TODO（下一輪精準化）：對照你線上用的 MinIO RELEASE tag，把 `PutObjectHandler` 內每一段對應到具體 helper function（例如：metadata 抽取、SSE apply、hash.NewReader、NewPutObjReader、opts 組裝）。
+### 1.1 以本機 source tree 精準對照（/home/ubuntu/clawd/minio）
+以目前 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準：
+- 檔案：`cmd/object-handlers.go`
+- handler：`func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Request)`
+
+你在 handler 內會看到一條非常「可追 code」的 pipeline（摘出關鍵函式名，方便你 grep）：
+- 路徑與前置檢查：
+  - `mux.Vars(r)` → `unescapePath(vars["object"])`
+  - `extractMetadataFromReq(ctx, r)`
+  - `isPutActionAllowed(..., policy.PutObjectAction)`
+  - `enforceBucketQuotaHard(ctx, bucket, size)`
+- SSE / Auto-encryption：
+  - `globalBucketSSEConfigSys.Get(bucket)`
+  - `sseConfig.Apply(r.Header, sse.ApplyOptions{ AutoEncrypt: globalAutoEncryption })`
+- 讀取/驗證管線（hash/etag/checksum）：
+  - chunked streaming：`newSignV4ChunkedReader(...)` / `newUnsignedV4ChunkedReader(...)`
+  - compression（s2）：`newS2CompressReader(...)`（若可壓縮且 size > minCompressibleSize）
+  - hash reader：`hash.NewReaderWithOpts(...)` + `hashReader.AddChecksum(...)`
+  - put reader：`pReader := NewPutObjReader(hashReader)`
+- ObjectOptions 組裝：
+  - `opts, err = putOptsFromReq(ctx, r, bucket, object, metadata)`
+  - `opts.IndexCB = idxCb`（壓縮索引 callback）
+- 最終落到 object layer：
+  - `objectAPI.PutObject(ctx, bucket, object, pReader, opts)`
+
+> 你如果要做更細的 trace/metric 插桿點：`NewPutObjReader()`、`putOptsFromReq()`、`objectAPI.PutObject()` 這三段通常最有價值（reader、opts、底層寫入分界）。
 
 ---
 
@@ -105,7 +130,14 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 - replication / site replication（若有）
 - 轉派到某個 set 的 `erasureObjects` 實作
 
-> TODO：把你的版本中 `erasureServerPools.PutObject` 的「選 set 規則」補成可直接追 code 的條列（含：bucket 分配、set 內 drive selection、容量/負載判斷）。
+### 3.1 本機 source tree 對照：pool / set 選擇與 lock
+以 `/home/ubuntu/clawd/minio` 為準：
+- `cmd/erasure-server-pool.go`：`func (z *erasureServerPools) PutObject(...)`
+  - `z.NewNSLock(bucket, object)`（若 `!opts.NoLock`）
+  - `idx, err := z.getPoolIdxNoLock(ctx, bucket, object, data.Size())`（多 pool 情況下決定 pool）
+  - `return z.serverPools[idx].PutObject(...)`（把寫入導向特定 pool）
+
+> 補充：`z.serverPools[idx].PutObject` 在單 pool 情境會一路落到 set/object：`erasureSets.PutObject` → `erasureObjects.PutObject`。
 
 ---
 
@@ -123,7 +155,22 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
   - erasure encode + write shards
   - 寫入 `xl.meta` / commit rename
 
-> TODO：補齊你版本中的實際檔案/函式名稱（多半在 `cmd/erasure-object*.go` / `cmd/xl-storage*.go` / `cmd/xl-storage-format*.go` 一帶）。
+### 4.1 本機 source tree 對照：set → erasureObjects
+以 `/home/ubuntu/clawd/minio` 為準：
+- `cmd/erasure-sets.go`：`func (s *erasureSets) PutObject(...)`
+  - `set := s.getHashedSet(object)`
+  - `return set.PutObject(ctx, bucket, object, data, opts)`
+- `cmd/erasure-object.go`：
+  - `func (er erasureObjects) PutObject(...) { return er.putObject(...) }`
+  - `func (er erasureObjects) putObject(...)` 裡面可以看到真正的寫入組裝：
+    - parity 計算：`globalStorageClass.GetParityForSC(...)`
+    - 計算 `dataDrives/parityDrives/writeQuorum`
+    - `fi := newFileInfo(pathJoin(bucket, object), dataDrives, parityDrives)` + `fi.DataDir = mustGetUUID()`
+    - `onlineDisks, partsMetadata = shuffleDisksAndPartsMetadata(...)`
+    - `erasure, err := NewErasure(ctx, dataBlocks, parityBlocks, blockSize)`
+    - 後續會做 shard write + `xl.meta` 更新/commit（同檔案後段可繼續往下追）
+
+> 你要找「最底層寫檔」通常會一路追到 `xlStorage`（`cmd/xl-storage.go`）的 write/rename 與 `xl.meta` 操作。
 
 ---
 
