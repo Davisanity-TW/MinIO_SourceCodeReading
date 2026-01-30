@@ -129,3 +129,45 @@ err = z.serverPools[poolIdx].sets[setIdx].healErasureSet(ctx, tracker.QueuedBuck
 ## 5. 本輪進度
 - 補齊「自動新盤 healing」的實際入口與呼叫鏈：`initAutoHeal` → `monitorLocalDisksAndHeal` → `healFreshDisk` → `sets[setIdx].healErasureSet`
 - 補齊 `.healing.bin` healing tracker（檔名/存放位置/用途）與 namespace lock 的實際 key
+
+
+## .healing.bin 在哪裡？（預設路徑/內容）
+
+你看到的這段：
+
+- `minioMetaBucket/pathJoin(bucketMetaPrefix, ".healing.bin")`
+
+在 code 上可對到：
+- `cmd/object-api-utils.go`：`minioMetaBucket = ".minio.sys"`
+- `cmd/object-api-common.go`：`bucketMetaPrefix = "buckets"`
+- `cmd/background-newdisks-heal-ops.go`：`healingTrackerFilename = ".healing.bin"`
+
+### 1) 在「檔案系統/本地磁碟」上，預設實體路徑
+當 storage backend 是本地檔案系統（XL/erasure），`xlStorage.Healing()` 直接用 OS 讀檔：
+- `cmd/xl-storage.go`：
+  - `healingFile := pathJoin(s.drivePath, minioMetaBucket, bucketMetaPrefix, healingTrackerFilename)`
+
+因此每顆資料碟（`drivePath`）上會有：
+
+- `<drivePath>/.minio.sys/buckets/.healing.bin`
+
+> 分散式/多節點時：每個 node 的每顆 disk 都各自有一份。
+
+### 2) .healing.bin 內容是「進度/狀態」，不是完整 object 清單
+`.healing.bin` 對應結構是 `healingTracker`（`cmd/background-newdisks-heal-ops.go`）。
+它會記錄：
+- disk/pool/set/disk index、endpoint
+- heal start/last update
+- items healed/failed/skipped、bytes done/failed/skipped
+- **最後掃到哪個 bucket/object（Bucket/Object 欄位）**
+- queued/healed buckets
+
+但它 **沒有把『所有正在 heal 的 objects 清單』完整持久化**。
+你通常只能從 `Bucket`/`Object` 看到「最後掃描/處理到哪裡」。
+
+### 3) 如果你要看「目前 heal 的 object 清單」應該去哪裡看？
+MinIO 會透過 admin heal API/CLI 在執行時回報細節。實務上可用：
+- `mc admin heal <alias> --recursive --json`（或搭配 `--scan deep`）
+  - 這會輸出每個 object 的 heal 狀態（適合留存/管線化）。
+
+> TODO：後續把 admin heal handler（server side）與 `madmin-go` 的輸出欄位也對到 source code，讓你能把 JSON 欄位一路 trace 回內部流程。
