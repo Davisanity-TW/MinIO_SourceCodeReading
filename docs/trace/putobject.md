@@ -92,6 +92,29 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 - 最終落到 object layer：
   - `objectAPI.PutObject(ctx, bucket, object, pReader, opts)`
 
+### 1.2 PutObjectHandler：實際 code 片段定位（含關鍵函式）
+以下以 workspace 的 MinIO source 為準（`/home/ubuntu/clawd/minio`）：
+- 檔案：`cmd/object-handlers.go`
+- 入口：`func (api objectAPIHandlers) PutObjectHandler(...)`（約在 `:1987`）
+
+你要追「PutObject 的核心讀取/驗證/壓縮/opts 組裝/落盤分界」時，可以直接對照這些段落：
+- 解析 bucket/object：`mux.Vars(r)` → `unescapePath(vars["object"])`
+- content length + auth 類型分支：`getRequestAuthType(r)` + `newSignV4ChunkedReader()` / `newUnsignedV4ChunkedReader()`
+- bucket quota：`enforceBucketQuotaHard(ctx, bucket, size)`
+- SSE auto-encrypt：
+  - `globalBucketSSEConfigSys.Get(bucket)`
+  - `sseConfig.Apply(r.Header, sse.ApplyOptions{AutoEncrypt: globalAutoEncryption})`
+- 壓縮（s2）分支（可壓縮且 size > minCompressibleSize）：
+  - `isCompressible(r.Header, object)`
+  - `hash.NewReader(...)`（用來計算 actual-size/etag/checksum）
+  - `newS2CompressReader(actualReader, actualSize, wantEncryption)` → `idxCb`
+  - `reader = etag.Wrap(s2c, actualReader)` + `size = -1`（compressed size 不可預期）
+- hash/etag/checksum 最終 reader：
+  - `hash.NewReaderWithOpts(ctx, reader, hash.Options{...})`
+  - `hashReader.AddChecksum(r, size < 0)`
+  - `pReader := NewPutObjReader(hashReader)`
+- ObjectOptions 組裝：`opts, err = putOptsFromReq(ctx, r, bucket, object, metadata)` + `opts.IndexCB = idxCb`
+
 > 你如果要做更細的 trace/metric 插桿點：`NewPutObjReader()`、`putOptsFromReq()`、`objectAPI.PutObject()` 這三段通常最有價值（reader、opts、底層寫入分界）。
 
 ---

@@ -29,6 +29,28 @@ if last > lastPingThreshold {
 - TCP 連線還沒立刻被 OS 回收（所以你看到的是「我主動 cancel」而不是 socket 立刻斷）
 - 但應用層心跳已經停止（或心跳封包/訊息處理卡住）
 
+## 2.5) 快速排查 SOP（先用 10 分鐘把方向定出來）
+目標：判斷是 **(A) 網路/連線品質** 還是 **(B) 對端忙到心跳處理卡住**。
+
+1) **確認錯誤發生的對端（remote）是誰**
+- 在 server log 同一時間點，找有沒有印出 peer/endpoint/host（不同版本 log 欄位不同）。
+- 若你有把 MinIO log 打到結構化（JSON），優先用 `node` / `remote` / `peer` 欄位聚合。
+
+2) **看同時期是否有「資源壓力」跡象**（先挑最便宜的指標）
+- CPU：load / steal（虛擬化環境很關鍵）
+- Memory：是否頻繁 GC / OOM killer
+- Disk：latency 飆高、queue depth 很高（metadata-heavy 時很常見）
+
+3) **看 TCP 重傳/丟包（網路方向最直觀）**
+- `ss -ti` 看該連線是否大量 retransmit / rto
+- `mtr` 或 switch/host 的 error counter（如果你能看得到）
+
+4) **對照當下是否有背景任務在跑**（容易造成 "對端忙"）
+- healing / scanner / rebalance / replication
+- 尤其是「大 bucket + 很多小檔」+ 「磁碟 latency 飆」時，grid ping 很容易受影響
+
+> 經驗法則：如果同一時間也看到 request latency 變長、iowait 飆高、或 healing/rebalance 在跑，通常比「純網路抖動」更常見。
+
 ## 3) 最常見原因（按發生機率排序）
 
 ### A) 網路抖動 / 封包丟失 / 連線不穩

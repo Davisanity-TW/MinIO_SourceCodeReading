@@ -92,6 +92,11 @@ defer locker.Unlock(lkctx)
 err = z.serverPools[poolIdx].sets[setIdx].healErasureSet(ctx, tracker.QueuedBuckets, tracker)
 ```
 
+補兩個容易誤會的點：
+1) `serverPools[poolIdx].sets[setIdx]` 這裡的 `sets[*]` 在目前 source tree 裡其實是 **`*erasureObjects`**（也就是「一個 erasure set 的 object layer 實作」）。
+2) `healErasureSet` 的實作點在：
+   - `cmd/global-heal.go`：`func (er *erasureObjects) healErasureSet(ctx context.Context, buckets []string, tracker *healingTracker) error`
+
 > 這行就是「進到特定 poolIdx/setIdx 的底層 erasure set healing」的入口。
 
 ### 2.4 retry 行為（為什麼你會看到同一顆盤反覆 heal）
