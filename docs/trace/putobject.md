@@ -5,6 +5,13 @@
 > 本頁以 **MinIO RELEASE.2024-05-07**（知識庫標題版本）為假設版本；實際檔名/函式如有差異，以當前 checkout 的 MinIO source 為準（下方留了 TODO 方便逐條對照）。
 
 ## 0. Router：PutObject 會被註冊在哪？
+### 0.1 建議的 grep 關鍵字（快速定位用）
+- `registerAPIRouter` / `api-router.go`
+- `PutObjectHandler` / `object-handlers.go`
+- `PutObject` + `ObjectLayer` / `object-api-interface.go`
+- `erasureServerPools` / `server-pool*`
+- `xl.meta` / `erasure-object*`
+
 - 入口：`cmd/routers.go`
   - `configureServerHandler(...)` 會建立 router，並呼叫 `registerAPIRouter(router)`
 - S3 API router：`cmd/api-router.go`

@@ -16,6 +16,13 @@
 > TODO：把每一類對應到的 code 入口（handler/worker）補上。
 
 ## 1) 觸發點（Trigger points）
+
+### 1.1 建議的 grep 關鍵字（快速定位用）
+- `backgroundHeal` / `healing` / `heal`
+- `initBackground*` / `startBackground*`
+- `admin heal` / `mc admin heal`
+- `HealObject` / `HealBucket`（如果有）
+- `xl.meta` + `quorum` + `reconstruct`
 常見入口方向（待逐條對照）：
 - 啟動流程：`serverMain()` / `initBackground*` / `startBackground*`
 - 背景掃描：bucket/object listing + 對應的 heal scheduler
