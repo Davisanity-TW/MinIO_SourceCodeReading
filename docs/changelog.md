@@ -7,3 +7,4 @@
 - 2026-01-29 22:22：手動補推（排程改為 06/14/22 後，22:00 之前未生效）。PutObject/Healing trace 補充『本輪進度』與下一步 TODO。
 - 2026-01-29：新增 Trace 專區（PutObject / Healing）與側邊欄連結。
 - 2026-01-28：初始化知識庫網站骨架。
+- 2026-01-30 14:00：補齊 PutObject 路由 matcher（Copy/Extract/Append reject/Multipart part）與 Healing 新盤自動修復呼叫鏈（initAutoHeal → healFreshDisk → healErasureSet）。
