@@ -39,6 +39,13 @@ export default defineConfig({
           { text: 'Healing', link: '/trace/healing' }
         ]
       }
+          ,
+      {
+        text: 'Troubleshooting',
+        items: [
+          { text: 'canceling remote connection', link: '/troubleshooting/canceling-remote-connection' }
+        ]
+      }
     ]
   }
 })
