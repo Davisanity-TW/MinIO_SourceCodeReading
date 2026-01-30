@@ -95,3 +95,45 @@ rg -n "canceling remote connection" internal/grid
 # 找 ping interval / threshold
 rg -n "clientPingInterval|lastPingThreshold" internal/grid
 ```
+
+
+## 6) 更深入：LastPing/LastPong 在哪裡更新？
+
+### 6.1 server 端（muxServer.LastPing）
+`canceling remote connection` 看的其實是 **muxServer.LastPing**，這個值是在 server 收到「這條 mux 的 ping」時更新：
+
+- `minio/internal/grid/muxserver.go` → `func (m *muxServer) ping(seq uint32) pongMsg`
+
+節錄：
+```go
+atomic.StoreInt64(&m.LastPing, time.Now().Unix())
+```
+
+對應呼叫鏈是：
+- `Connection.handleMsg()` 收到 `OpPing` → `Connection.handlePing()`
+- 若 `m.MuxID != 0` 且這是 streaming mux → `c.inStream.Load(m.MuxID)` 找到 mux → 呼叫 `muxServer.ping()`
+
+### 6.2 client 端（muxClient.LastPong / Connection.LastPong）
+client 端有兩層時間戳：
+
+1) **Connection.LastPong**（MuxID=0 的 ping/pong，用來維持整條 connection 的健康狀態）
+- `minio/internal/grid/connection.go` → `handlePong()`
+  - `if m.MuxID == 0 { atomic.StoreInt64(&c.LastPong, time.Now().Unix()) }`
+
+2) **muxClient.LastPong**（MuxID != 0 的 streaming mux 心跳）
+- `minio/internal/grid/muxclient.go`
+  - 在收到 response/pong 時：`atomic.StoreInt64(&m.LastPong, time.Now().Unix())`
+  - 在 timer tick 時：若 `time.Since(LastPong) > clientPingInterval*2` → client 端也會判定 disconnect
+
+> 換句話說：**server 端（~60s 沒看到 ping）**與 **client 端（~30s 沒看到 pong）**各自都有「自行判斷斷線」的邏輯。
+
+
+## 7) 如何把「哪個上層功能」對應到這條 grid mux？
+
+目前這條 log 只印：`canceling remote connection %s not seen for %v`，其中 `%s` 是 `m.parent`（Connection 的字串化）。
+
+要把它落到具體模組（例如 healing、rebalance、scanner、replication），建議沿著 **subroute/handler** 去追：
+- `setSubroute(ctx, ...)`（server 端 newMuxStream 有把 subroute 塞進 ctx）
+- 找看有哪些地方註冊 grid handler（通常在 `internal/grid` 的上層服務初始化）
+
+> TODO：下一輪我會把「哪裡建立 grid Connection」與「subroute 值的來源」貼到這篇，這樣你看到 log 就能反推是哪一類 background job。
