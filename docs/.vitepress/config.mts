@@ -36,7 +36,8 @@ export default defineConfig({
         text: 'Trace（路徑追蹤）',
         items: [
           { text: 'PutObject', link: '/trace/putobject' },
-          { text: 'Healing', link: '/trace/healing' }
+          { text: 'Healing', link: '/trace/healing' },
+          { text: 'Admin Heal', link: '/trace/admin-heal' }
         ]
       }
           ,
