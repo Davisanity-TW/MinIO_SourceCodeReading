@@ -110,9 +110,48 @@ err = z.serverPools[poolIdx].sets[setIdx].healErasureSet(ctx, tracker.QueuedBuck
 有了上面的入口後，你接下來的讀碼目標會是（以 `/home/ubuntu/clawd/minio` 這份 source tree 對照）：
 
 - `cmd/global-heal.go`：`func (er *erasureObjects) healErasureSet(ctx context.Context, buckets []string, tracker *healingTracker) error`
-  - 這裡會先對每個 bucket 呼叫：`objAPI.HealBucket(ctx, bucket, madmin.HealOpts{ScanMode: ...})`
-  - 接著依 disk 的 `NRRequests`/CPU core 估算 worker 數量（`globalHealConfig.GetWorkers()` 可覆寫）
-  - 然後進入「逐 bucket 掃描 object、分派到 worker heal」的主迴圈（同檔案後段可繼續往下追）
+
+### 3.1 `healErasureSet()` 一進來先做什麼？（實際 code 片段）
+在 `cmd/global-heal.go:145`（目前 workspace 版本）可以看到三個非常實務的重點：
+
+1) **先把 bucket heal 一輪（即使後面才開始掃 objects）**
+```go
+for _, bucket := range healBuckets {
+    _, err := objAPI.HealBucket(ctx, bucket, madmin.HealOpts{ScanMode: scanMode})
+    ...
+}
+```
+而且在「逐 bucket heal」的主迴圈開始前，還會再對該 bucket `HealBucket()` 一次（用來處理一開始 bucket heal 失敗、但後面要 retry 的情境）。
+
+2) **用 disk 的 `NRRequests` + CPU core 估算 healer worker 數量**
+```go
+info, _ := tracker.disk.DiskInfo(ctx, DiskInfoOptions{})
+if info.NRRequests > uint64(runtime.GOMAXPROCS(0)) {
+    numHealers = uint64(runtime.GOMAXPROCS(0)) / 4
+} else {
+    numHealers = info.NRRequests / 4
+}
+if numHealers < 4 { numHealers = 4 }
+if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
+```
+> 這段在排查「heal 太慢/太快打爆磁碟」時很好用：你能快速看出 worker 數量是怎麼算出來、以及如何被 `globalHealConfig` 覆寫。
+
+3) **選一組可用 disks 當來源（quorum-like），避免把 healing disk 拿來當來源**
+- `disks, _, healing := er.getOnlineDisksWithHealingAndInfo(true)`
+- `disks = disks[:len(disks)-healing]`（把 healing disks 切掉）
+- `expectedDisks := len(disks)/2 + 1`（抓「過半」當來源）
+
+### 3.2 object/entry 是怎麼被掃到並丟給 heal worker？
+同一個 function 後段可以看到：
+- 建立 worker pool：`jt, _ := workers.New(int(numHealers))`
+- 建立 `results` channel，集中更新 tracker（避免多 goroutine 直接寫 tracker）
+- `healEntry(bucket, entry metaCacheEntry)`：對每個 metacache entry 做 heal
+
+`healEntry()` 裡的關鍵點：
+- 會跳過 dir（`entry.isDir()`）、以及 `.minio.sys` 下的 `.metacache/.trash/multipart` 等系統路徑
+- 會把 entry name 做 encode（erasureObjects 需要 encoded object name）：`encodeDirObject(entry.name)`
+- 如果 entry 解析 fileInfo 失敗，會直接走：
+  - `er.HealObject(ctx, bucket, encodedEntryName, "", madmin.HealOpts{ScanMode: scanMode, Remove: healDeleteDangling})`
 
 而更底層的動作仍然是：
 - 讀 `xl.meta` → 判斷 shard/parts → 滿足 read quorum → Reed-Solomon reconstruct → 寫回缺片 → 更新 meta

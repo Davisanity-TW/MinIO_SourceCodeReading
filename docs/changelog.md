@@ -1,5 +1,6 @@
 # 更新日誌
 
+- 2026-02-01 06:00：Healing：補齊 `cmd/global-heal.go: (*erasureObjects).healErasureSet()` 的實際流程（先 HealBucket、worker 數量估算、來源 disks 選擇、metacache entry → HealObject 的關鍵呼叫）。
 - 2026-01-31 22:38：新增 Trace：admin heal（server handler / JSON 欄位對照第一版）
 - 2026-01-31 06:00：Trace/PutObject：補上 PutObjectHandler（cmd/object-handlers.go）更精準的 pipeline/函式定位；Trace/Healing：補上 `sets[setIdx]` 實際型別與 `healErasureSet` 的實作位置；Troubleshooting：新增 `canceling remote connection` 的 10 分鐘快速排查 SOP。
 - 2026-01-30 22:00：PutObject/Healing：補齊本機 source tree 的具體函式/檔案對照（PutObjectHandler pipeline、erasureServerPools/erasureSets/erasureObjects PutObject；Healing 的 healErasureSet 實作在 cmd/global-heal.go），並修正 changelog 首行缺日期。
