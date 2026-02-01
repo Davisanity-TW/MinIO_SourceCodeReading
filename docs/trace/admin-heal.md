@@ -73,3 +73,58 @@
 > TODO（下一版要補）：
 > 1) `madmin.HealResultItem` 的欄位（Bucket/Object/Type/Detail/Result...）在 server 端「哪裡被 append」
 > 2) `mc admin heal --json`（client side）實際輸出欄位與 server JSON 是否 1:1
+
+
+## 5) Items（madmin.HealResultItem）是在哪裡被產生/塞進 Items[]？
+
+### 5.1 Items[] 的 push 點（server memory queue）
+在 `cmd/admin-heal-ops.go`：
+- `func (h *healSequence) pushHealResultItem(r madmin.HealResultItem) error`
+  - 會把 `r` append 到 `h.currentStatus.Items`
+  - 並會設定 `r.ResultIndex`（遞增序號）
+  - **上限：`maxUnconsumedHealResultItems = 1000`**
+    - 如果 client 沒有繼續用 `clientToken` 拉進度，Items 堆到 1000 之後，heal traversal 會卡住等待（最多 24h，之後 abort）。
+
+> 這也是為什麼「要拿 heal 的 object 清單」最務實的方式是：用 `mc admin heal --json` 持續消費事件流，順便把 JSON 落盤。
+
+### 5.2 單一 object 的 heal result 是在哪裡組出來？
+在 `cmd/erasure-healing.go`：
+- `func (er *erasureObjects) healObject(...)(result madmin.HealResultItem, err error)`
+
+它會初始化（至少）這些欄位：
+- `Type = madmin.HealItemObject`
+- `Bucket / Object / VersionID`
+- `DiskCount`
+- 後續計算/填入：`DataBlocks / ParityBlocks`、以及 Before/After 的 disk 狀態（視版本/路徑）
+
+### 5.3 healSequence 怎麼把每個 object 的結果塞進 Items[]？
+在 `cmd/admin-heal-ops.go`：
+- `func (h *healSequence) queueHealTask(...)`
+  - task 完成後拿到 `healResult`：
+    - `res.result.Type = healType`
+    - `res.result.Detail = res.err.Error()`（若有）
+    - `return h.pushHealResultItem(res.result)`
+
+## 6) 你要的兩個問題：
+
+### 6.1 我怎麼拿到「heal 的檔案清單」？（建議 SOP）
+**重點：MinIO 不會把完整清單永久落在某個檔案；要靠 `Items[]` 事件流。**
+
+建議：用 `mc admin heal --json` 把事件流存下來，再自己 parse 成清單。
+
+（範例，實際欄位依版本可能略不同）
+```bash
+mc admin heal ALIAS/my-bucket/my/prefix/ --recursive --json > heal.jsonl
+
+# 抽出 bucket/object
+jq -r 'select(.Items?) | .Items[]? | [.Bucket,.Object,.VersionID,.Type,.Detail] | @tsv' heal.jsonl
+```
+
+### 6.2 我怎麼 trigger heal 某些檔案？
+最常用/最安全的方法是 **用 bucket/prefix 限縮範圍**：
+- `mc admin heal ALIAS/my-bucket/path/to/prefix/ --recursive`
+
+如果你要更「強力」的掃描（較慢）：
+- `--scan deep`
+
+> 底層 server 其實有 `ObjectLayer.HealObject(bucket, object, versionID, opts)` 這種精準接口（見 `cmd/object-api-interface.go`），但 CLI 主要是以 bucket/prefix 的方式讓你觸發一批 objects。

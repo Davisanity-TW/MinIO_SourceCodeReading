@@ -1,5 +1,6 @@
 # 更新日誌
 
+- 2026-02-01 10:28：Admin heal：補上 Items[]（madmin.HealResultItem）產生/推送位置與『如何拿 heal 清單/如何 trigger』SOP
 - 2026-02-01 06:00：Healing：補齊 `cmd/global-heal.go: (*erasureObjects).healErasureSet()` 的實際流程（先 HealBucket、worker 數量估算、來源 disks 選擇、metacache entry → HealObject 的關鍵呼叫）。
 - 2026-01-31 22:38：新增 Trace：admin heal（server handler / JSON 欄位對照第一版）
 - 2026-01-31 06:00：Trace/PutObject：補上 PutObjectHandler（cmd/object-handlers.go）更精準的 pipeline/函式定位；Trace/Healing：補上 `sets[setIdx]` 實際型別與 `healErasureSet` 的實作位置；Troubleshooting：新增 `canceling remote connection` 的 10 分鐘快速排查 SOP。
