@@ -222,6 +222,38 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 
 ---
 
+## 4.3 PutObject 精準呼叫鏈（含檔案/receiver）
+以下以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準，列出「從 handler 到最底層 putObject」的 **常見**呼叫鏈（不同版本可能在中間多一層 wrapper，但 receiver/概念大致一致）：
+
+1) `cmd/object-handlers.go`
+- `func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Request)`
+  - `objectAPI := api.ObjectAPI()`
+  - `objectAPI.PutObject(ctx, bucket, object, pReader, opts)`
+
+2) `cmd/erasure-server-pool.go`
+- `func (z *erasureServerPools) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, opts ObjectOptions) (ObjectInfo, error)`
+  - `idx, err := z.getPoolIdxNoLock(ctx, bucket, object, data.Size())`
+  - `return z.serverPools[idx].PutObject(ctx, bucket, object, data, opts)`
+
+3) `cmd/erasure-server-pool.go` / `cmd/erasure-sets.go`（視版本/拆檔）
+- `func (p *erasureServerPool) PutObject(...)`
+  - `return p.sets.PutObject(ctx, bucket, object, data, opts)`
+
+4) `cmd/erasure-sets.go`
+- `func (s *erasureSets) PutObject(...) (ObjectInfo, error)`
+  - `set := s.getHashedSet(object)`
+  - `return set.PutObject(ctx, bucket, object, data, opts)`
+
+5) `cmd/erasure-object.go`
+- `func (er erasureObjects) PutObject(...) (ObjectInfo, error)`
+  - `return er.putObject(ctx, bucket, object, data, opts)`
+
+6) `cmd/erasure-object.go`
+- `func (er erasureObjects) putObject(...) (ObjectInfo, error)`
+  - temp object / erasure encode / write shards / `xl.meta` / commit rename
+
+> 建議：如果你要做 profiling 或插 trace，通常把觀察點放在「handler → ObjectLayer」與「`erasureObjects.putObject` 內部 temp/quorum/write」這兩段，收斂最快。
+
 ## 5. 讀碼「下一步」清單
 - [ ] `cmd/api-router.go`：確認你的 RELEASE tag 版本 PutObject route 是否同樣有 Copy/Extract/Append reject 的分流
 - [ ] `cmd/object-handlers.go`：把 `PutObjectHandler` 內部關鍵步驟拆小節：auth、hash、SSE、metadata、etag、通知事件
