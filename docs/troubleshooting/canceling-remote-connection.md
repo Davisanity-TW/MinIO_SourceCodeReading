@@ -2,6 +2,8 @@
 
 > 這個訊息不是 S3 client 端的錯誤本體，而是 **MinIO server 內部的 inter-node RPC（grid）** 在判定「對端連線不健康」時，主動切斷遠端連線的 log。
 
+---
+
 ## 1) 這個錯誤在哪裡出現？（Source code）
 在你目前的 MinIO source tree（workspace：`/home/ubuntu/clawd/minio`）中，字串出現在：
 
@@ -23,18 +25,26 @@ if last > lastPingThreshold {
 - `lastPingThreshold = 4 * clientPingInterval`（`muxserver.go`）
   - 也就是 **~60 秒沒看到 ping**，server 端就會判定 remote 不健康並取消。
 
+---
+
 ## 2) 這代表什麼狀況？（語意）
 **server 端「看不到對端的 ping」**。
+
 這通常意味著：
 - TCP 連線還沒立刻被 OS 回收（所以你看到的是「我主動 cancel」而不是 socket 立刻斷）
 - 但應用層心跳已經停止（或心跳封包/訊息處理卡住）
+
+---
 
 ## 2.5) 快速排查 SOP（先用 10 分鐘把方向定出來）
 目標：判斷是 **(A) 網路/連線品質** 還是 **(B) 對端忙到心跳處理卡住**。
 
 1) **確認錯誤發生的對端（remote）是誰**
-- 在 server log 同一時間點，找有沒有印出 peer/endpoint/host（不同版本 log 欄位不同）。
-- 若你有把 MinIO log 打到結構化（JSON），優先用 `node` / `remote` / `peer` 欄位聚合。
+- log 內 `%s` 是 `m.parent`（Connection 的字串化）。在目前版本：
+  - `minio/internal/grid/connection.go`：
+    - `func (c *Connection) String() string { return fmt.Sprintf("%s->%s", c.Local, c.Remote) }`
+- 也就是你會看到類似：`10.0.0.10:9000->10.0.0.11:9000`。
+  - 左邊是 **local**，右邊是 **remote**。
 
 2) **看同時期是否有「資源壓力」跡象**（先挑最便宜的指標）
 - CPU：load / steal（虛擬化環境很關鍵）
@@ -51,6 +61,8 @@ if last > lastPingThreshold {
 
 > 經驗法則：如果同一時間也看到 request latency 變長、iowait 飆高、或 healing/rebalance 在跑，通常比「純網路抖動」更常見。
 
+---
+
 ## 3) 最常見原因（按發生機率排序）
 
 ### A) 網路抖動 / 封包丟失 / 連線不穩
@@ -58,7 +70,7 @@ if last > lastPingThreshold {
 - 常見於：跨 AZ/跨機房、overlay network（VXLAN）、iptables/conntrack 壓力、MTU 不一致。
 
 **排查：**
-- node-to-node ping/latency（ICMP 只能初步）
+- node-to-node latency（ICMP 只能初步）
 - TCP 層：`mtr`、`ss -ti` 看 retransmits
 - K8s：檢查 CNI/MTU（Calico/Cilium/Flannel）
 
@@ -90,16 +102,19 @@ if last > lastPingThreshold {
 - 中間設備 idle timeout
 - conntrack 表是否滿
 
+---
+
 ## 4) 你可以怎麼把問題「落到具體模組」？
-這個 log 只告訴你「remote connection 被 cancel」，但沒有告訴你是哪個上層功能在用 grid。
-下一步要做的是把 `m.parent`（Connection）對應的 remote 節點、subroute/handler 找出來。
+這個 log 只告訴你「remote connection 被 cancel」，但沒有直接告訴你是哪個上層功能在用 grid。
 
-建議你在 source 裡追：
-- `internal/grid/connection.go`：Connection 建立、ping/pong、LastPing 更新點
-- `internal/grid/muxclient.go`：client side ping/pong 與 disconnect 條件
-- `setSubroute(ctx, ...)`：哪些服務在走哪條 subroute
+落地方式通常是：
+- 先靠 `local->remote` 把「哪兩個節點」定位出來
+- 再對照同一時間點：該 remote 節點是否正在做 healing/scanner/rebalance/replication
+- 必要時用 debug/trace/pprof 佐證「是網路」還是「是對端忙」
 
-> TODO：把「LastPing 是在哪裡被更新」的實際函式貼出來，這樣你就能反推：到底是 client 沒送、還是 server 沒收到/沒處理。
+補充：grid 本身有 "subroute" 機制（`internal/grid/handlers.go`: `setSubroute()` / `GetSubroute()`），但目前這條 `canceling remote connection ...` log **沒有把 subroute 印出來**，所以只能從外部線索推回去。
+
+---
 
 ## 5) 實務建議（你要的是：如何降低發生率）
 - 先把問題當成 **60 秒沒有心跳** → 90% 是「網路/資源」問題，而不是 PutObject 本身。
@@ -109,15 +124,21 @@ if last > lastPingThreshold {
 ---
 
 ## Appendix：快速定位指令
-在 MinIO source tree 內：
+在 MinIO source tree 內（不用 `rg`，用 GNU `grep` 即可）：
 ```bash
 # 找到 log 出處
-rg -n "canceling remote connection" internal/grid
+cd /home/ubuntu/clawd/minio
+grep -RIn "canceling remote connection" internal/grid
 
 # 找 ping interval / threshold
-rg -n "clientPingInterval|lastPingThreshold" internal/grid
+grep -RIn "clientPingInterval" internal/grid
+grep -RIn "lastPingThreshold" internal/grid
+
+# 看 Connection 的字串長什麼樣（local->remote）
+grep -RIn "func (c \\*Connection) String" internal/grid
 ```
 
+---
 
 ## 6) 更深入：LastPing/LastPong 在哪裡更新？
 
@@ -148,14 +169,3 @@ client 端有兩層時間戳：
   - 在 timer tick 時：若 `time.Since(LastPong) > clientPingInterval*2` → client 端也會判定 disconnect
 
 > 換句話說：**server 端（~60s 沒看到 ping）**與 **client 端（~30s 沒看到 pong）**各自都有「自行判斷斷線」的邏輯。
-
-
-## 7) 如何把「哪個上層功能」對應到這條 grid mux？
-
-目前這條 log 只印：`canceling remote connection %s not seen for %v`，其中 `%s` 是 `m.parent`（Connection 的字串化）。
-
-要把它落到具體模組（例如 healing、rebalance、scanner、replication），建議沿著 **subroute/handler** 去追：
-- `setSubroute(ctx, ...)`（server 端 newMuxStream 有把 subroute 塞進 ctx）
-- 找看有哪些地方註冊 grid handler（通常在 `internal/grid` 的上層服務初始化）
-
-> TODO：下一輪我會把「哪裡建立 grid Connection」與「subroute 值的來源」貼到這篇，這樣你看到 log 就能反推是哪一類 background job。

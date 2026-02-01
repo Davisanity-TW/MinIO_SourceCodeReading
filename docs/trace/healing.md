@@ -43,6 +43,32 @@
 3) 對每顆 disk 起 goroutine：
    - `healFreshDisk(ctx, z, diskEndpoint)`
 
+### 1.3 `initBackgroundHealing()`：背景 healer worker（不是新盤）
+除了「新盤/回復」驅動的 healing 之外，MinIO 還會在啟動後啟動一組 **background healer**，用來處理各種 healing task（bucket/object/format）。
+
+- 檔案：`cmd/background-heal-ops.go`
+- 入口：`func initBackgroundHealing(ctx context.Context, objAPI ObjectLayer)`
+  - 建 `bgSeq := newBgHealSequence()`
+  - 起多個 worker：`go globalBackgroundHealRoutine.AddWorker(ctx, objAPI, bgSeq)`
+  - `globalBackgroundHealState.LaunchNewHealSequence(bgSeq, objAPI)`（排程/序列狀態）
+
+worker 端的「實際分流」在：
+- `(*healRoutine).AddWorker()`：
+  - `task.bucket == "/"` → `healDiskFormat()` → `objAPI.HealFormat()`
+  - `task.object == ""` → `objAPI.HealBucket()`
+  - 否則 → `objAPI.HealObject()`
+
+> 讀碼時你可以把它當成：**一個統一的 healing task executor**。
+
+### 1.4 "online healing" 的一個常見來源：scanner 發現不一致
+如果你想把「讀/掃描時發現壞片」連到 `HealObject()`：
+- `cmd/data-scanner.go` 內會對掃描到的 object 觸發：
+  - `o.HealObject(ctx, bucket, object, versionID, healOpts)`
+
+這條路徑常見的運維現象是：
+- 平常沒有 admin heal 也沒有新盤事件
+- 但 scanner 週期掃到不一致（或 bitrot / missing parts）→ 觸發 heal object
+
 ---
 
 ## 2) 單顆 disk healing 的實際工作：`healFreshDisk()`

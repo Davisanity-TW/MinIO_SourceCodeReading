@@ -195,6 +195,31 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 
 > 你要找「最底層寫檔」通常會一路追到 `xlStorage`（`cmd/xl-storage.go`）的 write/rename 與 `xl.meta` 操作。
 
+### 4.2 `putObject()` 內部再往下追：temp object / quorum / 清理點
+以下以 `/home/ubuntu/clawd/minio` 的 `cmd/erasure-object.go`（`func (er erasureObjects) putObject(...)`）為準，列出一些「很值得下斷點/插 trace」的實際點：
+
+- **Precondition 與 lock（避免 race）**
+  - 若 `opts.CheckPrecondFn != nil`：會先 `er.NewNSLock(bucket, object)` 拿鎖，再 `er.getObjectInfo()` 取得舊物件做 precondition。
+
+- **parity/data/quorum 決策點（storage class + online disks）**
+  - `storageDisks := er.getDisks()`
+  - `parityDrives := globalStorageClass.GetParityForSC(userDefined[xhttp.AmzStorageClass])`
+  - availability optimized：會依 offline disks 動態調高 parity（並寫入 `userDefined[minIOErasureUpgraded]`）
+  - `writeQuorum := dataDrives`（若 data==parity 則 `writeQuorum++`）
+
+- **本次寫入的 DataDir / temp object（避免 partial 覆蓋）**
+  - `fi := newFileInfo(pathJoin(bucket, object), dataDrives, parityDrives)`
+  - `fi.DataDir = mustGetUUID()`（每次寫入的新 DataDir）
+  - `uniqueID := mustGetUUID()` + `tempObj := uniqueID`
+  - `tempErasureObj := pathJoin(uniqueID, fi.DataDir, "part.1")`
+  - `defer er.deleteAll(context.Background(), minioMetaTmpBucket, tempObj)`（發生 error 時的清理點）
+
+- **disks 排序與 erasure encoder 建立**
+  - `onlineDisks, partsMetadata = shuffleDisksAndPartsMetadata(storageDisks, partsMetadata, fi)`
+  - `erasure, err := NewErasure(ctx, fi.Erasure.DataBlocks, fi.Erasure.ParityBlocks, fi.Erasure.BlockSize)`
+
+> 上面這些點（尤其是 `fi.DataDir`、`tempObj`、`writeQuorum`、`deleteAll`）在排查「寫入失敗後留下 temp」「某些盤 offline 導致 parity 升級」「為什麼 quorum 算這樣」時非常好用。
+
 ---
 
 ## 5. 讀碼「下一步」清單
