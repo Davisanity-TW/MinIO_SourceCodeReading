@@ -191,6 +191,36 @@ if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
 
 ---
 
+## 3.3 `HealObject()` 的實際呼叫鏈（精準到檔案/函式）
+
+當 healing 的工作單位落到「某個 object」時，最常見的呼叫鏈（以 `/home/ubuntu/clawd/minio` source tree 為準）是：
+
+1) `cmd/erasure-server-pool.go`
+- `func (z *erasureServerPools) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+  - 這層會做 pool 選擇/前置處理，然後把 heal 交給 set。
+
+2) `cmd/erasure-sets.go`
+- `func (s *erasureSets) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+  - 這層會把 object hash 到特定 set，最後落到該 set 的 `erasureObjects`。
+
+3) `cmd/erasure-healing.go`
+- `func (er erasureObjects) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (hr madmin.HealResultItem, err error)`
+  - 這裡會先做「快速 read（不拿 lock）」：`readAllFileInfo(..., false, false)`
+    - 如果 *all not found* → 直接回傳 default heal result。
+  - 然後呼叫：`er.healObject(...)` 做真正的修復。
+  - 一個很重要的分支：若偵測到 `errFileCorrupt` 且 `opts.ScanMode != madmin.HealDeepScan`，會 **自動改成 deep scan 再 heal 一次**（讓 bitrot 檢查更完整）。
+
+4) `cmd/erasure-healing.go`
+- `func (er *erasureObjects) healObject(ctx context.Context, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+  - 若 `!opts.NoLock`：會 `er.NewNSLock(bucket, object)` 拿 namespace lock，再重新 `readAllFileInfo(..., true, true)`。
+  - 會用 `objectQuorumFromMeta(...)` 算出 `readQuorum`，並把 `DataBlocks/ParityBlocks` 寫到 heal result。
+  - 會 `pickValidFileInfo(...)` 選出 latest 的 `xl.meta`（modtime/etag/quorum）。
+  - 會 `disksWithAllParts(...)` / `NewErasure(...)` 決定可重建來源與建立 RS encoder。
+
+> 這條鏈的好處：你排「HealObject 很慢 / 一直 retry / 為什麼進 deep scan」時，幾乎每個觀察點都能在 `cmd/erasure-healing.go` 找到對應的 if/loop。
+
+---
+
 ## 4) 讀碼下一步（先把你最需要排障的點補齊）
 - [ ] 從 `cmd/background-newdisks-heal-ops.go` 接到 `sets[setIdx].healErasureSet()` 的實作檔案與函式簽名
 - [ ] 找出「background healing（非新盤）」的 scheduler/worker（`initBackgroundHealing` 內部）

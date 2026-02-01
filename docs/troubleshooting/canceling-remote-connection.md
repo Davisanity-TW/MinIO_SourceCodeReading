@@ -123,6 +123,28 @@ if last > lastPingThreshold {
 
 ---
 
+## 6) 對照其他 log/metric：把「這條 grid log」跟實際症狀串起來
+
+因為 `canceling remote connection ... not seen for ...` 本身不會告訴你「是哪個功能在用這條 grid connection」，所以實務上建議用同時間點做關聯：
+
+1) **同時間點是否有 Healing / Rebalance / Scanner 的紀錄**
+- healing trace（若有訂閱）：`madmin.TraceHealing`（對應 server 端 `cmd/erasure-healing.go` 的 `healTrace()`）
+- background healing：`cmd/background-heal-ops.go` / `cmd/background-newdisks-heal-ops.go`
+- scanner：`cmd/data-scanner.go`
+
+2) **同一對節點是否反覆出現（固定 remote）**
+- 若固定是某一台 remote：優先懷疑該節點的 I/O 或 CPU/GC 壓力（「對端忙」）
+- 若 remote 會漂移但同一個 rack / 同一個 switch：優先懷疑網路層（MTU、錯誤包、鏈路品質）
+
+3) **如果是 K8s**：用 Pod/node 層事件對照
+- node network drop / conntrack 壓力
+- CNI（Calico/Cilium/Flannel）是否有 MTU mismatch
+- 該時間點是否有 node reboot / kubelet hang / CPU steal 飆
+
+> 簡單判斷：如果你同時間看到 S3 request latency 飆高、或者 healing/scanner 正在跑，這條 log 通常是「結果」（心跳跟不上），不是「根因」。
+
+---
+
 ## Appendix：快速定位指令
 在 MinIO source tree 內（不用 `rg`，用 GNU `grep` 即可）：
 ```bash
