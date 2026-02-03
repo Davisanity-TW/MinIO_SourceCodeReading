@@ -162,6 +162,47 @@ grep -RIn "func (c \\*Connection) String" internal/grid
 
 ---
 
+## Appendix B：用「系統層訊號」快速判斷是網路還是資源（更實務）
+
+### B.1 先確認是不是 TCP 重傳（偏網路）
+在 **local 與 remote 兩邊**都跑一下（抓你 log 中那對 IP/port）：
+```bash
+# 看是否有大量 retrans / rto
+ss -ti '( sport = :9000 or dport = :9000 )' | head -n 80
+
+# 也可以用 nstat 快速看 kernel 層 TCP 重傳統計
+nstat -az | egrep 'TcpRetransSegs|TcpExtTCPSynRetrans|TcpTimeouts' || true
+```
+判讀：
+- `retrans` 快速累積、或 RTO 很大 → 網路/封包丟失/MTU/中間設備 idle timeout 方向優先。
+
+### B.2 看是不是 I/O 卡住（偏資源）
+```bash
+# iowait / queue depth / await
+iostat -x 1 5
+
+# 若是 nvme
+nvme smart-log /dev/nvme0n1 2>/dev/null | head || true
+
+# kernel 層錯誤
+dmesg -T | egrep -i 'nvme|blk|reset|timeout|I/O error' | tail -n 50
+```
+判讀：
+- `await`、`svctm` 飆高、或 dmesg 出現 timeout/reset → 對端可能忙到 ping handler 跑不動。
+
+### B.3 K8s/CNI 環境的常見坑（MTU/conntrack）
+```bash
+# conntrack 壓力（若節點有裝）
+sysctl net.netfilter.nf_conntrack_count net.netfilter.nf_conntrack_max 2>/dev/null || true
+
+# 基本 MTU 檢查（實際要依 CNI/overlay）
+ip link | egrep 'mtu|vxlan|cali|cilium|flannel' || true
+```
+
+> 經驗上：`canceling remote connection ... not seen for ~60s` 在大量 healing/scanner 或磁碟延遲飆高的時段更常發生；若同時看到 TCP retrans 明顯增加才優先懷疑網路。
+
+---
+
 ## 6) 更深入：LastPing/LastPong 在哪裡更新？
 
 ### 6.1 server 端（muxServer.LastPing）

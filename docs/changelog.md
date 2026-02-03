@@ -1,5 +1,6 @@
 # 更新日誌
 
+- 2026-02-03 22:58：Troubleshooting：擴充 `canceling remote connection` 的實務排查段落（ss/nstat/iostat/conntrack/MTU），更快判斷網路 vs 資源瓶頸。
 - 2026-02-02 06:00：Trace/PutObject：補上從 `PutObjectHandler` 一路到 `erasureObjects.putObject()` 的精準呼叫鏈（含檔案與 receiver），方便快速 grep/下斷點。
 - 2026-02-01 22:00：Trace/Healing：補上 `HealObject()` 實際呼叫鏈（erasureServerPools → erasureSets → erasureObjects → `healObject()`）與 deep scan/lock/quorum 等關鍵觀察點；Troubleshooting：`canceling remote connection` 補上「如何用同時間點 log/metric 串關聯」的小節。
 - 2026-02-01 14:00：Trace/PutObject：補上 `erasureObjects.putObject()` 的 temp object/quorum/清理點；Trace/Healing：補上 `initBackgroundHealing` 與 scanner 觸發 `HealObject` 的來源；Troubleshooting：更新 `canceling remote connection`（補 `Connection.String()` 的 local->remote 解讀 + 用 grep 取代 rg 指令）。
