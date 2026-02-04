@@ -217,6 +217,21 @@ if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
   - 會 `pickValidFileInfo(...)` 選出 latest 的 `xl.meta`（modtime/etag/quorum）。
   - 會 `disksWithAllParts(...)` / `NewErasure(...)` 決定可重建來源與建立 RS encoder。
 
+### 4.1 `healObject()` 內部「兩段 readAllFileInfo」的用意（實戰觀察點）
+同一個 object heal，通常會看到 **至少一次** `readAllFileInfo(...)`，而在 `!opts.NoLock` 時會在拿到 namespace lock 後再讀一次：
+
+- **第一次（可能不拿 lock）**：快速判斷「是不是 all not found / 是否需要進一步」
+- **第二次（拿 lock 後）**：確保在修復時看到的 `xl.meta`/parts 狀態是穩定的，並避免 concurrent update 造成「剛重建完又被覆寫」
+
+因此你在排查：
+- heal 一直 retry、或 heal 看似成功但很快又進 heal
+- heal latency 很高（尤其是 metadata heavy bucket）
+
+時，通常可以把 profiling/trace 觀察點放在：
+- `readAllFileInfo(...)`（讀 meta/parts 的 fan-out）
+- `objectQuorumFromMeta(...)`（quorum 計算/判斷讀不到 vs 壞掉）
+- `pickValidFileInfo(...)`（選哪一份 meta 當準）
+
 > 這條鏈的好處：你排「HealObject 很慢 / 一直 retry / 為什麼進 deep scan」時，幾乎每個觀察點都能在 `cmd/erasure-healing.go` 找到對應的 if/loop。
 
 ---

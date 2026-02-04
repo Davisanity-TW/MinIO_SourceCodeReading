@@ -1,5 +1,6 @@
 # 更新日誌
 
+- 2026-02-04 08:00：Trace：PutObject 補齊 `erasureObjects.putObject()` 內部的精準落盤流程（`erasure.Encode` → `.minio.sys/tmp` → `renameData`/`commitRenameDataDir`）與 MRF partial 補洞線索；Healing 補充 `healObject()` 內兩段 `readAllFileInfo` 的意義與建議觀察點。
 - 2026-02-03 22:58：Troubleshooting：擴充 `canceling remote connection` 的實務排查段落（ss/nstat/iostat/conntrack/MTU），更快判斷網路 vs 資源瓶頸。
 - 2026-02-02 06:00：Trace/PutObject：補上從 `PutObjectHandler` 一路到 `erasureObjects.putObject()` 的精準呼叫鏈（含檔案與 receiver），方便快速 grep/下斷點。
 - 2026-02-01 22:00：Trace/Healing：補上 `HealObject()` 實際呼叫鏈（erasureServerPools → erasureSets → erasureObjects → `healObject()`）與 deep scan/lock/quorum 等關鍵觀察點；Troubleshooting：`canceling remote connection` 補上「如何用同時間點 log/metric 串關聯」的小節。

@@ -222,6 +222,55 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 
 ---
 
+## 4.2.1 `erasureObjects.putObject()` 內部：Encode → tmp → rename/commit（精準到函式名）
+以下以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準（`cmd/erasure-object.go:1247` 起）。這段是 PutObject 真正把資料寫進 disks、再「原子性 commit」到正式路徑的核心。
+
+### A) shard writer：bitrot writer 寫到 `.minio.sys/tmp`
+- 檔案：`cmd/erasure-object.go`
+- 先組 `writers[]`，每個 online disk 一個 writer：
+  - **非 inline data**：
+    - `newBitrotWriter(disk, bucket, minioMetaTmpBucket, tempErasureObj, shardFileSize, DefaultBitrotAlgorithm, erasure.ShardSize())`
+  - **inline data（小物件）**：
+    - `newStreamingBitrotWriterBuffer(...)` → 最後把 bytes 塞到 `partsMetadata[i].Data`
+
+其中 tmp 寫入路徑組合：
+- `uniqueID := mustGetUUID()`
+- `fi.DataDir = mustGetUUID()`（每次寫入的新 datadir）
+- `tempObj := uniqueID`
+- `tempErasureObj := pathJoin(uniqueID, fi.DataDir, "part.1")`
+
+### B) encode & write quorum：`erasure.Encode(...)`
+- 檔案：`cmd/erasure-object.go`
+- 核心寫入：
+  - `n, erasureErr := erasure.Encode(ctx, toEncode, writers, buffer, writeQuorum)`
+  - `closeBitrotWriters(writers)`
+- 若 `n < data.Size()`：回 `IncompleteBody{}`（代表 client 提早斷/內容不足）
+
+### C) 把 tmp object rename 到正式 bucket/object：`renameData(...)`
+- 檔案：`cmd/erasure-object.go`
+- 入口呼叫（重要）：
+  - `onlineDisks, versions, oldDataDir, err := renameData(ctx, onlineDisks, minioMetaTmpBucket, tempObj, partsMetadata, bucket, object, writeQuorum)`
+
+直覺語意：
+- `.minio.sys/tmp/<uniqueID>/<dataDir>/part.1` → `<bucket>/<object>/<dataDir>/part.1`
+- 並同時處理 `xl.meta`（依版本/inline/版本化狀態寫入對應 metadata）
+
+### D) commit rename（版本/DataDir 的最終切換）：`commitRenameDataDir(...)`
+- 檔案：`cmd/erasure-object.go`
+- 呼叫：`er.commitRenameDataDir(ctx, bucket, object, oldDataDir, onlineDisks)`
+
+> 這個步驟對應「把新版本/新 DataDir 變成對外可見的最新狀態」；排查 partial write/版本不一致時很關鍵。
+
+### E) offline disks / MRF（後續補洞）
+若不是 speedtest object，且本次寫入過程中有 disk offline：
+- `er.addPartial(bucket, object, fi.VersionID)`
+或版本差異時：
+- `globalMRFState.addPartialOp(partialOperation{...})`
+
+> MRF（most recently failed）這段是你在「寫入成功但某些 disks 當下離線，之後會背景補齊」時，很重要的追查線索。
+
+---
+
 ## 4.3 PutObject 精準呼叫鏈（含檔案/receiver）
 以下以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準，列出「從 handler 到最底層 putObject」的 **常見**呼叫鏈（不同版本可能在中間多一層 wrapper，但 receiver/概念大致一致）：
 
