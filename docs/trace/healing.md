@@ -234,6 +234,35 @@ if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
 
 > 這條鏈的好處：你排「HealObject 很慢 / 一直 retry / 為什麼進 deep scan」時，幾乎每個觀察點都能在 `cmd/erasure-healing.go` 找到對應的 if/loop。
 
+### 4.2 `healObject()` 內部的「精準步驟」（把流程補到實際函式名）
+以下以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準（`cmd/erasure-healing.go:242` 起），把 `healObject()` 前半段最常用的判讀點補成「可 grep 的函式名」：
+
+1) **拿 lock（預設會拿）**
+- `er.NewNSLock(bucket, object)` → `lk.GetLock(ctx, globalOperationTimeout)`
+
+2) **拿到 lock 後「重新讀一次 metadata」**（這輪才是用來做修復判斷的基準）
+- `readAllFileInfo(ctx, storageDisks, "", bucket, object, versionID, true, true)`
+
+3) **用 metadata 計算 read quorum（如果連 quorum 都不滿足，可能會走 dangling purge）**
+- `objectQuorumFromMeta(ctx, partsMetadata, errs, er.defaultParityCount)`
+- 若 quorum 算不出來：
+  - `er.deleteIfDangling(ctx, bucket, object, partsMetadata, errs, nil, ObjectOptions{VersionID: versionID})`
+
+4) **挑出「最新且可用」的 `xl.meta` 當作修復的 reference**
+- `listOnlineDisks(storageDisks, partsMetadata, errs, readQuorum)` → 回 `(onlineDisks, modTime, etag)`
+- `pickValidFileInfo(ctx, partsMetadata, modTime, etag, readQuorum)` → `latestMeta`
+
+5) **確認哪些 disks 真的「有齊 parts」可當重建來源**
+- `disksWithAllParts(ctx, onlineDisks, partsMetadata, errs, latestMeta, bucket, object, scanMode)`
+
+6) **需要 RS 重建時才初始化 erasure encoder**
+- `NewErasure(ctx, latestMeta.Erasure.DataBlocks, latestMeta.Erasure.ParityBlocks, latestMeta.Erasure.BlockSize)`
+
+7) **後續才開始判斷哪些 disks 是 outdated / missing parts，並決定要 heal 的項目**
+- `for i, v := range availableDisks { ... }`（對每顆 disk 計算 driveState / 是否要補）
+
+> 小結：在你遇到「heal 一直跑但看不懂在忙什麼」時，通常先把 `objectQuorumFromMeta`（是否滿足 quorum）、`pickValidFileInfo`（以誰為準）、`disksWithAllParts`（重建來源夠不夠）這三點釐清，方向會非常快收斂。
+
 ---
 
 ## 4) 讀碼下一步（先把你最需要排障的點補齊）
