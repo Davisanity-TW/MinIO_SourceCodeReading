@@ -265,6 +265,61 @@ if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
 
 ---
 
+## 4.3 `healObject()` 的「重建/寫回」主流程（精準到函式名）
+
+前面 4.2 已經把 `healObject()` 的「拿 lock → 讀 meta → 算 quorum → 選 latestMeta → 決定可用 disks」補齊。
+接下來這一段才是 *真正把缺片/壞片重建出來並寫回 disk* 的核心。
+
+以下以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準：
+- 檔案：`cmd/erasure-healing.go`
+- function：`func (er *erasureObjects) healObject(...)`
+- 主要段落：`~:430` 之後（以你當前 checkout 為準）
+
+### A) 先把 disks/metadata reorder 成「data 盤在前、parity 盤在後」
+用來確保後面讀寫 shard 的 index/分布一致：
+- `shuffleDisks(availableDisks, latestMeta.Erasure.Distribution)` → `latestDisks`
+- `shuffleDisks(outDatedDisks, latestMeta.Erasure.Distribution)` → `outDatedDisks`
+- `shufflePartsMetadata(partsMetadata, latestMeta.Erasure.Distribution)` → `partsMetadata`
+
+同時把需要修復的 disks 其 `partsMetadata[i]` 直接設成 `latestMeta`（清掉 inline data/checksums/index），確保寫回的是 quorum 期望的那份 metadata：
+- `cleanFileInfo(latestMeta)`
+
+### B) 準備 tmp 寫入位置（避免 partial write 直接覆蓋正式資料）
+- `tmpID := mustGetUUID()`
+- `migrateDataDir := mustGetUUID()`（主要用在 XLV1 遷移）
+- `srcDataDir := latestMeta.DataDir`
+- `dstDataDir := latestMeta.DataDir`（若 `latestMeta.XLV1` 則改用 `migrateDataDir`）
+
+> 這裡的 `tmpID` + `dstDataDir` 對應到後面寫入 `.minio.sys/tmp/<tmpID>/<dstDataDir>/part.N`。
+
+### C) 逐 part 做 RS 重建：`erasure.Heal()`（讀 readers → 寫 writers）
+對每個 `partNumber`：
+1) 組 reader（從「健康 disks」讀 shard）：
+   - `newBitrotReader(disk, ..., bucket, partPath, ..., checksumAlgo, checksumInfo.Hash, erasure.ShardSize())`
+2) 組 writer（寫到 `.minio.sys/tmp`）：
+   - 非 inline：`newBitrotWriter(disk, bucket, minioMetaTmpBucket, partPath, ..., DefaultBitrotAlgorithm, erasure.ShardSize())`
+   - inline data：`newStreamingBitrotWriterBuffer(...)`（最後塞到 `partsMetadata[i].Data`）
+3) 核心重建：
+   - `err = erasure.Heal(ctx, writers, readers, partSize, prefer)`
+
+完成後會把已修復的 part 加回該 disk 的 metadata：
+- `partsMetadata[i].DataDir = dstDataDir`
+- `partsMetadata[i].AddObjectPart(partNumber, "", partSize, partActualSize, partModTime, partIdx, partChecksums)`
+
+### D) 把 `.minio.sys/tmp` rename 回正式路徑：`disk.RenameData()`
+對每顆修復成功的 disk：
+- `partsMetadata[i].Erasure.Index = i + 1`（記錄更新 disk 的 index）
+- `partsMetadata[i].SetHealing()`（標記 healing 狀態）
+- `disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bucket, object, RenameOptions{})`
+
+最後：
+- `defer er.deleteAll(context.Background(), minioMetaTmpBucket, tmpID)`
+  - 代表 tmp 資料會在 heal 結束後被清掉（成功/失敗都會走 defer）
+
+> 這段的讀碼價值：你在排查「heal 很慢」「某些 disk 一直修不好」「heal 後還是壞」時，直接看 `erasure.Heal()` 是不是卡在 reader（來源盤讀不出/bitrot）或 writer（目標盤寫入錯誤/latency），通常比只看外層 `HealObject()` log 直覺很多。
+
+---
+
 ## 4) 讀碼下一步（先把你最需要排障的點補齊）
 - [ ] 從 `cmd/background-newdisks-heal-ops.go` 接到 `sets[setIdx].healErasureSet()` 的實作檔案與函式簽名
 - [ ] 找出「background healing（非新盤）」的 scheduler/worker（`initBackgroundHealing` 內部）
