@@ -53,10 +53,20 @@
   - `globalBackgroundHealState.LaunchNewHealSequence(bgSeq, objAPI)`（排程/序列狀態）
 
 worker 端的「實際分流」在：
-- `(*healRoutine).AddWorker()`：
-  - `task.bucket == "/"` → `healDiskFormat()` → `objAPI.HealFormat()`
-  - `task.object == ""` → `objAPI.HealBucket()`
-  - 否則 → `objAPI.HealObject()`
+- `cmd/background-heal-ops.go: (*healRoutine).AddWorker()`：
+
+實際 switch 長這樣（精準到 bucket/object 的語意分流）：
+- `task.bucket == nopHeal`：直接 skip（`errSkipFile`）
+- `task.bucket == "/"`（`SlashSeparator`）：`healDiskFormat()` → `objAPI.HealFormat()`
+- `task.bucket != "/"` 且 `task.object == ""`：`objAPI.HealBucket()`
+- `task.bucket != "/"` 且 `task.object != ""`：`objAPI.HealObject()`
+
+另外，healing task 的工作單位定義在同檔案：
+- `type healTask struct { bucket, object, versionID string; opts madmin.HealOpts; respCh chan healResult }`
+- 註解直接寫了「path 語意」：
+  - `path: '/'` → heal disk formats（含 metadata）
+  - `path: 'bucket/' or '/bucket/'` → heal bucket
+  - `path: 'bucket/object'` → heal object
 
 > 讀碼時你可以把它當成：**一個統一的 healing task executor**。
 

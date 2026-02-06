@@ -1,5 +1,6 @@
 # 更新日誌
 
+- 2026-02-06 08:00：Healing：補齊 background healer worker 的精準分流（`cmd/background-heal-ops.go: (*healRoutine).AddWorker()` 的 switch 與 `healTask` path 語意），方便把「heal format/bucket/object」對應到實際呼叫點。
 - 2026-02-05 08:00：Healing：補齊 `cmd/erasure-healing.go: (*erasureObjects).healObject()` 後半段的精準流程（`erasure.Heal` 重建 → `.minio.sys/tmp` 寫入 → `disk.RenameData` 寫回），方便定位 heal 是卡在讀來源盤還是寫目標盤。
 - 2026-02-04 20:00：Healing：補齊 `cmd/erasure-healing.go: (*erasureObjects).healObject()` 前半段的精準步驟（lock → readAllFileInfo → objectQuorumFromMeta → listOnlineDisks → pickValidFileInfo → disksWithAllParts → NewErasure），方便排查 quorum/metadata 選擇與重建來源。
 - 2026-02-04 08:00：Trace：PutObject 補齊 `erasureObjects.putObject()` 內部的精準落盤流程（`erasure.Encode` → `.minio.sys/tmp` → `renameData`/`commitRenameDataDir`）與 MRF partial 補洞線索；Healing 補充 `healObject()` 內兩段 `readAllFileInfo` 的意義與建議觀察點。
