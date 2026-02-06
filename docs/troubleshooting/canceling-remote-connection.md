@@ -114,6 +114,24 @@ if last > lastPingThreshold {
 
 補充：grid 本身有 "subroute" 機制（`internal/grid/handlers.go`: `setSubroute()` / `GetSubroute()`），但目前這條 `canceling remote connection ...` log **沒有把 subroute 印出來**，所以只能從外部線索推回去。
 
+### 4.1) 讓排查更快的「落地技巧」：同時 grep remote 相關 log
+因為這條 log 本身資訊有限，實務上我會用 `local->remote` 的 **remote IP:port**，在同一時間窗做二次過濾：
+
+- 在 remote 節點找：
+  - 是否同時間有 disk error / I/O timeout / rebalance/healing/scanner 相關 log
+  - 是否有 Go runtime/GC 壓力跡象（例如突然大量 `gc` / heap 變化，或 OOM）
+- 在 local 節點找：
+  - 是否同時間有同一個 remote 的 `grid` 相關 error（例如 connect retry / timeout）
+
+如果你有集中式 log（Loki/ELK），這招通常比只盯著單一訊息快很多。
+
+### 4.2) 版本差異提醒：不同 RELEASE tag 字串/閾值可能不同
+本頁以你 workspace 的 source tree（`/home/ubuntu/clawd/minio`）為準；若你要對照線上 `RELEASE.*` 版本：
+- 先用 `grep -RIn "canceling remote connection" internal/grid`
+- 再確認 `clientPingInterval` 與 `lastPingThreshold` 的定義位置與數值
+
+> 目的：避免你在 master 看到 ~60s，但線上版本其實是不同倍數/不同 interval，導致誤判。
+
 ---
 
 ## 5) 實務建議（你要的是：如何降低發生率）

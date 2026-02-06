@@ -322,6 +322,19 @@ if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
 - `partsMetadata[i].SetHealing()`（標記 healing 狀態）
 - `disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bucket, object, RenameOptions{})`
 
+#### D.1 `RenameData()` 的實作位置（落地到 storage 層）
+以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準：
+- interface：`cmd/storage-interface.go`（`StorageAPI`）
+  - grep：`RenameData(ctx` / `RenameData(`
+- 實作（本地 FS / XL）：`cmd/xl-storage.go`
+  - grep：`func (s *xlStorage) RenameData(`
+
+`HealObject/healObject` 在這裡做 rename 的意義是：
+- 先把重建出的 parts 寫到 `.minio.sys/tmp/<tmpID>/<dataDir>/part.N`
+- 最後用 `RenameData` 以接近原子性的方式把 tmp 變成正式資料路徑
+
+> 實戰：如果你看到 heal 卡很久但 CPU 不高，優先看 `RenameData()` 是否在某些磁碟上被 I/O latency 卡住（或遇到 filesystem error）。
+
 最後：
 - `defer er.deleteAll(context.Background(), minioMetaTmpBucket, tmpID)`
   - 代表 tmp 資料會在 heal 結束後被清掉（成功/失敗都會走 defer）

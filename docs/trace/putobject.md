@@ -261,6 +261,21 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 
 > 這個步驟對應「把新版本/新 DataDir 變成對外可見的最新狀態」；排查 partial write/版本不一致時很關鍵。
 
+#### D.1 `renameData()` / `commitRenameDataDir()` 的實作位置（方便直接跳轉）
+以 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）為準：
+- `renameData(...)`：`cmd/erasure-object.go`
+  - 建議 grep：`func renameData(`
+  - 你會在這裡看到：
+    - `.minio.sys/tmp/<tmpID>/<dataDir>/part.N` → `<bucket>/<object>/<dataDir>/part.N` 的 rename
+    - 寫入/更新 `xl.meta` 的時機（依 versioning / inline data / oldDataDir 等分支）
+- `(*erasureObjects).commitRenameDataDir(...)`：`cmd/erasure-object.go`
+  - 建議 grep：`func (er erasureObjects) commitRenameDataDir(` 或 `commitRenameDataDir(`
+  - 你會在這裡看到：
+    - 如何把「舊 DataDir」切到「新 DataDir」（或處理 delete-marker/版本化情境）
+    - 為什麼某些情況會留下 oldDataDir（保留舊版本）
+
+> 實戰：如果你想判斷「寫入卡在 tmp」「卡在 rename」「卡在 commit」，就把 stopwatch/pprof/trace 的觀察點分別放在 `erasure.Encode()`、`renameData()`、`commitRenameDataDir()` 三段，定位會非常快。
+
 ### E) offline disks / MRF（後續補洞）
 若不是 speedtest object，且本次寫入過程中有 disk offline：
 - `er.addPartial(bucket, object, fi.VersionID)`
