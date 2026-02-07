@@ -25,6 +25,14 @@ if last > lastPingThreshold {
 - `lastPingThreshold = 4 * clientPingInterval`（`muxserver.go`）
   - 也就是 **~60 秒沒看到 ping**，server 端就會判定 remote 不健康並取消。
 
+### 1.1 這條 log 是誰在檢查？（check loop）
+同一個檔案 `minio/internal/grid/muxserver.go` 內，會有類似 `checkRemoteAlive()` 的週期性檢查邏輯：
+- 讀 `muxServer.LastPing`
+- 若超過 `lastPingThreshold` 就 `m.close()`（你看到的 log 就在這裡印出來）
+
+因此看到這條訊息時，你可以把它直覺翻譯成：
+> 「server 端已經 ~60 秒沒收到對端 ping，所以主動把這條 remote connection 砍掉」
+
 ---
 
 ## 2) 這代表什麼狀況？（語意）

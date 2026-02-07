@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-07 08:00：Troubleshooting：補上 `canceling remote connection` 的 check loop（`checkRemoteAlive`）語意，讓 log 更容易對照到「server 端多久沒看到 ping 就會主動 close」。
+
 - 2026-02-06 20:00：Trace：PutObject 補上 `renameData()`/`commitRenameDataDir()` 的實作跳轉點（方便定位卡在 encode/tmp/rename/commit 哪一段）；Healing：補上 `StorageAPI.RenameData()` → `xlStorage.RenameData()` 的實作位置；Troubleshooting：`canceling remote connection` 增加用 remote IP:port 做同時期 log 關聯與 RELEASE tag 版本差異提醒。
 - 2026-02-06 08:00：Healing：補齊 background healer worker 的精準分流（`cmd/background-heal-ops.go: (*healRoutine).AddWorker()` 的 switch 與 `healTask` path 語意），方便把「heal format/bucket/object」對應到實際呼叫點。
 - 2026-02-05 08:00：Healing：補齊 `cmd/erasure-healing.go: (*erasureObjects).healObject()` 後半段的精準流程（`erasure.Heal` 重建 → `.minio.sys/tmp` 寫入 → `disk.RenameData` 寫回），方便定位 heal 是卡在讀來源盤還是寫目標盤。
