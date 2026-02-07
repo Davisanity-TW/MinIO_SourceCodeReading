@@ -258,3 +258,28 @@ client 端有兩層時間戳：
   - 在 timer tick 時：若 `time.Since(LastPong) > clientPingInterval*2` → client 端也會判定 disconnect
 
 > 換句話說：**server 端（~60s 沒看到 ping）**與 **client 端（~30s 沒看到 pong）**各自都有「自行判斷斷線」的邏輯。
+
+---
+
+## 7) 你問的「這條 log 常常跟什麼事情一起出現？」（快速關聯）
+
+在我自己排查經驗裡，這條 `canceling remote connection ... not seen for ...` 很常在這些情境一起出現：
+
+1) **Healing / Scanner / Rebalance 高負載時段**
+- 這些背景工作會把磁碟 I/O 拉滿，造成 request handler / grid handler 排隊變長。
+- 結果就是：即使網路沒斷，**對端 goroutine 處理 ping 來不及**，最後觸發 ~60s threshold。
+
+你可以用這兩個方向對照：
+- 看同時間是否有 healing trace：`madmin.TraceHealing`
+- 或直接把「PutObject ↔ Healing」的資料流/rename 寫回理解清楚（見：`/trace/putobject-healing`）
+
+2) **某一台 remote 固定反覆發生**
+- 如果 log 幾乎都指向同一台 remote（同一個 `local->remote`），優先懷疑：
+  - 該 remote 的磁碟 latency / I/O timeout
+  - CPU steal / GC 壓力
+  - NIC/driver 層 error counter
+
+3) **K8s + overlay network（MTU/conntrack）**
+- 若 remote 漂移但集中在某個 rack/某條 overlay path：優先回頭檢查 MTU mismatch / conntrack 壓力。
+
+> 小技巧：把這條 log 當成「症狀」而不是「根因」。根因 80% 會在同時間窗的 I/O/CPU/GC 或 healing/scanner/rebalance 的 log/metric 裡。

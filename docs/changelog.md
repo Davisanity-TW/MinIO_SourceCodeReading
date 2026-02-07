@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-07 20:02：Trace：新增 PutObject vs Healing 對照頁（把 PutObject 的 tmp/rename/commit 與 healObject 的讀→重建→寫回串起來）；Troubleshooting：`canceling remote connection` 增加與 healing/scanner/rebalance 高負載的快速關聯段落；首頁修正「系統總覽」連結。
+
 - 2026-02-07 08:00：Troubleshooting：補上 `canceling remote connection` 的 check loop（`checkRemoteAlive`）語意，讓 log 更容易對照到「server 端多久沒看到 ping 就會主動 close」。
 
 - 2026-02-06 20:00：Trace：PutObject 補上 `renameData()`/`commitRenameDataDir()` 的實作跳轉點（方便定位卡在 encode/tmp/rename/commit 哪一段）；Healing：補上 `StorageAPI.RenameData()` → `xlStorage.RenameData()` 的實作位置；Troubleshooting：`canceling remote connection` 增加用 remote IP:port 做同時期 log 關聯與 RELEASE tag 版本差異提醒。

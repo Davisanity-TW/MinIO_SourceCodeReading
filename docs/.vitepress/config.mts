@@ -37,10 +37,11 @@ export default defineConfig({
         items: [
           { text: 'PutObject', link: '/trace/putobject' },
           { text: 'Healing', link: '/trace/healing' },
+          { text: 'PutObject vs Healing', link: '/trace/putobject-healing' },
           { text: 'Admin Heal', link: '/trace/admin-heal' }
         ]
-      }
-          ,
+      },
+
       {
         text: 'Troubleshooting',
         items: [

@@ -8,5 +8,5 @@
 
 ## 導覽
 - [讀碼計畫](/reading-plan)
-- [系統總覽]/architecture/overview)
+- [系統總覽](/architecture/overview)
 - [更新日誌](/changelog)
