@@ -92,14 +92,46 @@ Healing 跟 PutObject 一樣是分層下去：
 
 > 你要快速定位「為什麼 healing 認定 object 不存在 / 或 dangling purge」：通常就是 `readAllFileInfo` + `objectQuorumFromMeta` 這段的分支。
 
-### 3.3 healObject() 的「後半段」：重建 → 寫 `.minio.sys/tmp` → RenameData 寫回
-後半段（概念上）會做：
-- 決定哪些 disk 需要 heal（missing/stale/bitrot）
-- 呼叫 erasure 的 Heal/Decode 類邏輯重建缺失 shards
-- **先寫到 `.minio.sys/tmp`**
-- 最後 `disk.RenameData()` 把 tmp data dir 轉正
+### 3.3 healObject() 的「後半段」：實際重建 → 寫 `.minio.sys/tmp` → `RenameData()` 寫回（精準到函式/檔案）
+檔案：`cmd/erasure-healing.go`
+- 入口：`func (er *erasureObjects) healObject(...)`
 
-> 這段的觀察點：如果你看到大量 healing 但磁碟 latency/queue depth 飆高，常見是「重建讀 + 寫回」把 I/O 打爆，進而影響 inter-node 心跳（grid ping）與整體 S3 latency。
+當 `disksToHealCount > 0` 且非 dry-run 後，`healObject()` 後半段會真的開始「重建缺失的 parts」，流程非常像 PutObject：
+
+1) **決定來源/目標 DataDir**
+- 你會看到邏輯會挑出：
+  - `srcDataDir`：用來讀既有 shards 的 DataDir（來源）
+  - `dstDataDir`：本次 heal 寫回的 DataDir（目標）
+  - `tmpID := mustGetUUID()`：本次 heal 的 tmp 目錄 id（對應 `.minio.sys/tmp/<tmpID>/...`）
+
+2) **對每個 part 建 reader/writer（含 bitrot）**
+- 讀來源：`newBitrotReader(...)`
+  - partPath：`pathJoin(object, srcDataDir, fmt.Sprintf("part.%d", partNumber))`
+- 寫 tmp：`newBitrotWriter(...)` 或 inline data 分支的 `newStreamingBitrotWriterBuffer(...)`
+  - tmp partPath：`pathJoin(tmpID, dstDataDir, fmt.Sprintf("part.%d", partNumber))`
+
+3) **核心重建：`erasure.Heal()`**
+- 真正做 erasure 重建、並把重建後的 shard 寫到 writers：
+  - `err = erasure.Heal(ctx, writers, readers, partSize, prefer)`
+
+4) **更新各 disk 的 partsMetadata（指向 dstDataDir）**
+- 對成功寫入的 disk：
+  - `partsMetadata[i].DataDir = dstDataDir`
+  - `partsMetadata[i].AddObjectPart(...)`
+  - inline data 則：`partsMetadata[i].Data = inlineBuffers[i].Bytes()` + `partsMetadata[i].SetInlineData()`
+
+5) **defer 清理 tmp**
+- `defer er.deleteAll(context.Background(), minioMetaTmpBucket, tmpID)`
+  - 代表即使成功 rename，tmp 也會嘗試清掉；失敗時也避免留下過多殘骸。
+
+6) **最關鍵：把 `.minio.sys/tmp` rename 到正式位置：`disk.RenameData()`**
+- 對每個要修的 disk：
+  - `partsMetadata[i].SetHealing()`（標記這是 healing 寫回）
+  - `disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bucket, object, RenameOptions{})`
+
+> 這裡的 `RenameData()` 就是 healing 把「重建出的資料（tmp）」變成「正式 object data dir」的原子性切換點。
+>
+> 如果你在 production 看到 healing 與 `canceling remote connection ... not seen for ...` 同時大量出現，常見是：**heal 的讀+寫把 I/O 打滿** → goroutine 排隊/GC/磁碟延遲飆高 → inter-node grid ping 跟不上。
 
 ---
 
