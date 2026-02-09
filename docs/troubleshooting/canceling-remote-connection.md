@@ -22,8 +22,12 @@ if last > lastPingThreshold {
 
 其中：
 - `clientPingInterval = 15s`（`minio/internal/grid/grid.go`）
-- `lastPingThreshold = 4 * clientPingInterval`（`muxserver.go`）
+- `lastPingThreshold = 4 * clientPingInterval`（`minio/internal/grid/muxserver.go`）
   - 也就是 **~60 秒沒看到 ping**，server 端就會判定 remote 不健康並取消。
+- `defaultSingleRequestTimeout = time.Minute`（`minio/internal/grid/grid.go`）
+  - 非 streaming 的單次 request（MuxID=0）如果 context 沒 deadline，會以這個 timeout 當預設。
+
+> 備註：這些 interval/threshold 目前是 code 常數（不是 config 參數）。因此看到 `~60s not seen` 更應該把它當作「網路/資源讓心跳停掉」的症狀，而不是先想調參。
 
 ### 1.1 這條 log 是誰在檢查？（check loop）
 同一個檔案 `minio/internal/grid/muxserver.go` 內，會有類似 `checkRemoteAlive()` 的週期性檢查邏輯：

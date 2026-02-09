@@ -43,26 +43,58 @@ grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
 
 在 `cmd/erasure-object.go: erasureObjects.putObject()` 內，你通常會想把寫入流程拆成三段看：
 
-### 2.1 Encode（把 stream 變成 data/parity shards）
-- 會建立：`erasure, err := NewErasure(...)`
-- 會準備 temp 物件路徑：
-  - `fi.DataDir = mustGetUUID()`
-  - `tempObj := uniqueID`
-  - `tempErasureObj := pathJoin(uniqueID, fi.DataDir, "part.1")`
-- 後續會走 `erasure.Encode(...)`/寫 shards（實際 writer 建立與寫入在 putObject 內部後段）
+### 2.1 Encode（把 stream 變成 data/parity shards，並寫到 `.minio.sys/tmp`）
+檔案：`cmd/erasure-object.go`
+- function：`func (er erasureObjects) putObject(...)`
 
-> 觀察點：如果 encode 或寫 tmp shard 階段出錯，通常會留下 `.minio.sys/tmp` 的殘骸（但 putObject 也有 defer cleanup：`defer er.deleteAll(..., minioMetaTmpBucket, tempObj)`）。
+你在這段要抓的重點通常是三件事：**DataDir / tmp 路徑、writer 怎麼建、以及 quorum encode 怎麼寫**。
+
+1) **建立 erasure encoder（RS）**
+- `erasure, err := NewErasure(ctx, dataBlocks, parityBlocks, blockSize)`
+
+2) **準備 DataDir 與 tmp object 路徑**
+- `fi.DataDir = mustGetUUID()`（本次 PutObject 的新 DataDir）
+- `uniqueID := mustGetUUID()`
+- `tempObj := uniqueID`
+- `tempErasureObj := pathJoin(uniqueID, fi.DataDir, "part.1")`
+
+3) **建立 writers：bitrot writer 寫到 `.minio.sys/tmp`**
+（這邊是你要下斷點/插 trace 的好位置）
+- 非 inline data：`newBitrotWriter(disk, bucket, minioMetaTmpBucket, tempErasureObj, shardFileSize, DefaultBitrotAlgorithm, erasure.ShardSize())`
+- inline data（小物件）：`newStreamingBitrotWriterBuffer(...)`（最後會把 bytes 塞到 `partsMetadata[i].Data`）
+
+4) **真正 encode + write quorum**
+- `n, erasureErr := erasure.Encode(ctx, toEncode, writers, buffer, writeQuorum)`
+- `closeBitrotWriters(writers)`
+- `n < data.Size()` → `IncompleteBody{}`（client 端內容不足/提前斷線的典型訊號）
+
+> 觀察點：如果 encode 或寫 tmp shard 階段出錯，通常會留下 `.minio.sys/tmp` 的殘骸；但 PutObject 本身也有 defer cleanup：`defer er.deleteAll(..., minioMetaTmpBucket, tempObj)`，所以「有沒有殘留」要跟當下 crash/kill -9、或某些 disk 卡住導致 cleanup 沒跑完一起判讀。
 
 ### 2.2 tmp（先寫到 `.minio.sys/tmp`，避免半套覆蓋正式物件）
 PutObject 的寫入通常會先落到 `minioMetaTmpBucket`（也就是 `.minio.sys/tmp`）底下，再做 rename。
 
-### 2.3 rename/commit（把 tmp 變成正式物件資料）
-後段常見會經過這些「你要下斷點/打 log 的點」：
-- `renameData()`
-- `commitRenameDataDir()`
-- 以及底層 disk API：`StorageAPI.RenameData()` → `xlStorage.RenameData()`
+### 2.3 rename/commit（把 tmp 變成正式物件資料：`renameData` → `commitRenameDataDir`）
+檔案：`cmd/erasure-object.go`
 
-> 觀察點：你要判斷「寫入成功但 commit 卡住」或「某些盤 rename 失敗導致需要後續 heal」，通常 rename/commit 這段最關鍵。
+PutObject 在 encode 寫完 `.minio.sys/tmp` 後，通常會進入兩段「把 tmp 變成正式資料」的流程：
+
+1) **rename tmp data → bucket/object data**：`renameData(...)`
+- 你可以 grep：`func renameData(`
+- 典型呼叫：
+  - `onlineDisks, versions, oldDataDir, err := renameData(ctx, onlineDisks, minioMetaTmpBucket, tempObj, partsMetadata, bucket, object, writeQuorum)`
+- 直覺語意：
+  - `.minio.sys/tmp/<tmpID>/<dataDir>/part.N` → `<bucket>/<object>/<dataDir>/part.N`
+  - 並同步處理 `xl.meta`（依版本化/inline data/oldDataDir 等分支）
+
+2) **commit（切換 DataDir / 讓新版本對外可見）**：`commitRenameDataDir(...)`
+- method：`func (er erasureObjects) commitRenameDataDir(...)`
+- 呼叫：`er.commitRenameDataDir(ctx, bucket, object, oldDataDir, onlineDisks)`
+
+3) **落到 storage 層 rename**
+- interface：`cmd/storage-interface.go`（`StorageAPI.RenameData`）
+- 實作：`cmd/xl-storage.go`（`func (s *xlStorage) RenameData(...)`）
+
+> 觀察點：要定位「卡在 encode/tmp/rename/commit 哪一段」時，最有效的切點通常是：`erasure.Encode()`、`renameData()`、`commitRenameDataDir()` 這三個位置。
 
 ---
 

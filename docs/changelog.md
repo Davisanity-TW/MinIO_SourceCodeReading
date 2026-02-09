@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-09 08:00：Trace：PutObject vs Healing 頁補齊 PutObject 端的 encode/tmp/rename/commit 精準函式名與檔案定位（`newBitrotWriter`、`erasure.Encode`、`renameData`、`commitRenameDataDir`）；Troubleshooting：`canceling remote connection` 補上 `defaultSingleRequestTimeout` 與「interval 是常數非調參」提醒。
+
 - 2026-02-08 20:00：Trace：PutObject vs Healing 頁補齊 `cmd/erasure-healing.go: healObject()` 後半段的精準函式/呼叫點（`erasure.Heal()`、`.minio.sys/tmp/<tmpID>`、`disk.RenameData()`），方便把「重建」與「寫回」的瓶頸對準到可下斷點的位置。
 
 - 2026-02-07 20:02：Trace：新增 PutObject vs Healing 對照頁（把 PutObject 的 tmp/rename/commit 與 healObject 的讀→重建→寫回串起來）；Troubleshooting：`canceling remote connection` 增加與 healing/scanner/rebalance 高負載的快速關聯段落；首頁修正「系統總覽」連結。
