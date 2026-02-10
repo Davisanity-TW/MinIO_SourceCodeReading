@@ -73,6 +73,17 @@ if last > lastPingThreshold {
 
 > 經驗法則：如果同一時間也看到 request latency 變長、iowait 飆高、或 healing/rebalance 在跑，通常比「純網路抖動」更常見。
 
+### 2.6) 建議你在事件/工單裡先記下的「最小資訊」（方便快速關聯）
+- `local->remote` 的那一對 endpoint（直接從 log 抄）：例如 `10.0.0.10:9000->10.0.0.11:9000`
+- 發生時間窗（至少 ±5 分鐘）
+- 當下是否正在跑：healing / scanner / rebalance / replication（有的話附上 job/phase）
+- 當下三個最便宜的系統指標：
+  - `iostat -x 1 5`（await、util、queue depth）
+  - `top`/`uptime`（load、CPU steal）
+  - `ss -ti '( sport = :9000 or dport = :9000 )'`（retrans/rto）
+
+這樣你後續要判斷是「網路」還是「對端忙到心跳處理不了」會快很多。
+
 ---
 
 ## 3) 最常見原因（按發生機率排序）

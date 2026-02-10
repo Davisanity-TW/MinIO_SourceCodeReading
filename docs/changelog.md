@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-10 08:00：Healing：補齊 scanner 觸發 `HealObject()` 的精準落點（`cmd/data-scanner.go: (*scannerItem).applyHealing()`、`madmin.HealOpts{Remove,ScanMode}`）；Troubleshooting：新增建議在事件/工單先記下的「最小資訊」清單（方便快速判斷網路 vs 對端忙）。
+
 - 2026-02-09 08:00：Trace：PutObject vs Healing 頁補齊 PutObject 端的 encode/tmp/rename/commit 精準函式名與檔案定位（`newBitrotWriter`、`erasure.Encode`、`renameData`、`commitRenameDataDir`）；Troubleshooting：`canceling remote connection` 補上 `defaultSingleRequestTimeout` 與「interval 是常數非調參」提醒。
 
 - 2026-02-08 20:00：Trace：PutObject vs Healing 頁補齊 `cmd/erasure-healing.go: healObject()` 後半段的精準函式/呼叫點（`erasure.Heal()`、`.minio.sys/tmp/<tmpID>`、`disk.RenameData()`），方便把「重建」與「寫回」的瓶頸對準到可下斷點的位置。

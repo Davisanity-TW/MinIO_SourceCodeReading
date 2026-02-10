@@ -71,13 +71,26 @@ worker 端的「實際分流」在：
 > 讀碼時你可以把它當成：**一個統一的 healing task executor**。
 
 ### 1.4 "online healing" 的一個常見來源：scanner 發現不一致
-如果你想把「讀/掃描時發現壞片」連到 `HealObject()`：
-- `cmd/data-scanner.go` 內會對掃描到的 object 觸發：
-  - `o.HealObject(ctx, bucket, object, versionID, healOpts)`
+如果你想把「讀/掃描時發現壞片」連到 `HealObject()`，最直接的落點在：
+- 檔案：`cmd/data-scanner.go`
+- method：`func (i *scannerItem) applyHealing(ctx context.Context, o ObjectLayer, oi ObjectInfo) (size int64)`
 
-這條路徑常見的運維現象是：
-- 平常沒有 admin heal 也沒有新盤事件
-- 但 scanner 週期掃到不一致（或 bitrot / missing parts）→ 觸發 heal object
+你可以在這裡看到 scanner 對每個掃描到的 object/version 會（依 scan mode）呼叫：
+```go
+scanMode := madmin.HealNormalScan
+if i.heal.bitrot {
+    scanMode = madmin.HealDeepScan
+}
+healOpts := madmin.HealOpts{ Remove: healDeleteDangling, ScanMode: scanMode }
+res, _ := o.HealObject(ctx, i.bucket, i.objectPath(), oi.VersionID, healOpts)
+```
+
+幾個實務重點：
+- **Deep scan 不是預設**：只有在 scanner 設定 `i.heal.bitrot` 時才會用 `madmin.HealDeepScan`（bitrot check 更重）。
+- `Remove: healDeleteDangling` 代表 healing 會順便清掉 dangling 資料（需要搭配 `HealObject()` 內部判斷）。
+- 這條路徑常見的運維現象是：
+  - 平常沒有 admin heal 也沒有新盤事件
+  - 但 scanner 週期掃到不一致（或 bitrot / missing parts）→ 觸發 heal object
 
 ---
 
