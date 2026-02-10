@@ -96,6 +96,29 @@ PutObject 在 encode 寫完 `.minio.sys/tmp` 後，通常會進入兩段「把 t
 
 > 觀察點：要定位「卡在 encode/tmp/rename/commit 哪一段」時，最有效的切點通常是：`erasure.Encode()`、`renameData()`、`commitRenameDataDir()` 這三個位置。
 
+### 2.4 PutObject 寫成功但「有洞」：MRF/partial 是怎麼被記下來、後續誰來補？
+PutObject 有一個很關鍵但常被忽略的路徑：**client 端看起來「寫入成功」**，但當下其實有部分 disks offline / write quorum 勉強達成，導致「某些 shards 沒寫到」。
+
+在這種情境下，MinIO 會把「需要後續補洞」記成 partial，讓背景機制（MRF / healing / scanner）有機會把缺片補回來。
+
+你可以在 `cmd/erasure-object.go` 的 `erasureObjects.putObject()` 後段看到類似邏輯（不同版本細節會略有差）：
+- 若本次寫入期間有 disk offline，會呼叫：
+  - `er.addPartial(bucket, object, fi.VersionID)`
+- 或把操作丟進 MRF state（Most Recently Failed）：
+  - `globalMRFState.addPartialOp(partialOperation{...})`
+
+**讀碼定位建議（在 `/home/ubuntu/clawd/minio`）：**
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "addPartial(" -n cmd/erasure-object.go cmd/*.go
+grep -RIn "globalMRFState" -n cmd/erasure-object.go cmd/*.go
+```
+
+實務判讀：
+- 如果你看到「PutObject 有成功回應」，但之後 scanner/healing 一直在補同一批 objects，通常就是這類「quorum 過了但有洞」的後果。
+- 若同時伴隨 inter-node grid 的 `canceling remote connection ... not seen for ...`，常見是：**背景補洞/掃描把磁碟打滿**，導致 grid ping/pong handler 延遲累積。
+
 ---
 
 ## 3) Healing：從 HealObject() 到 healObject()（如何挑來源、如何重建、如何寫回）
