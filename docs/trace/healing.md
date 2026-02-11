@@ -413,3 +413,52 @@ MinIO 會透過 admin heal API/CLI 在執行時回報細節。實務上可用：
   - 這會輸出每個 object 的 heal 狀態（適合留存/管線化）。
 
 > TODO：後續把 admin heal handler（server side）與 `madmin-go` 的輸出欄位也對到 source code，讓你能把 JSON 欄位一路 trace 回內部流程。
+
+---
+
+## 6) `HealBucket()` / `HealFormat()` / `HealObject()` 的落地實作位置（把「調度」接到「實作」）
+
+上面提到 background heal worker 會依 `healTask` 的 path 語意分流到：
+- `objAPI.HealFormat()`
+- `objAPI.HealBucket()`
+- `objAPI.HealObject()`
+
+要把「調度」接到「真正做事的地方」，你可以沿著 ObjectLayer 的 receiver 往下追：
+
+### 6.1 `HealFormat()`（修 format / metadata）
+- interface：`cmd/object-api-interface.go`（`ObjectLayer`）
+- 常見實作：`cmd/erasure-server-pool.go`
+  - `func (z *erasureServerPools) HealFormat(...)`
+
+背景 worker 的呼叫點在：
+- `cmd/background-heal-ops.go`：`(*healRoutine).AddWorker()`
+  - `task.bucket == "/"`（`SlashSeparator`）→ `healDiskFormat()` → `objAPI.HealFormat()`
+
+### 6.2 `HealBucket()`（bucket 層 metadata / bucket-level healing）
+- `cmd/erasure-server-pool.go`
+  - `func (z *erasureServerPools) HealBucket(ctx, bucket string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+
+典型 call chain：
+- `(*healRoutine).AddWorker()` → `objAPI.HealBucket()` → `erasureServerPools`（做 pool/set 選擇/並行） → set/object 層（視版本拆檔不同）
+
+### 6.3 `HealObject()`（object repair 的主線，最後落到 `erasureObjects.healObject`）
+這條鏈已在前文 3.3 補過，但在實作定位上你可以記這三個最穩的落點：
+- `cmd/erasure-server-pool.go`：`(*erasureServerPools).HealObject()`
+- `cmd/erasure-sets.go`：`(*erasureSets).HealObject()`
+- `cmd/erasure-healing.go`：`erasureObjects.HealObject()` → `(*erasureObjects).healObject()`
+
+### 6.4 快速 grep 指令（不用猜檔案拆分）
+不同 RELEASE tag 可能把 heal 相關檔案拆分/合併，最穩的方式是直接 grep signature：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# HealFormat/HealBucket/HealObject 實作
+grep -RIn "func (z \\*erasureServerPools) HealFormat" cmd/*.go
+grep -RIn "func (z \\*erasureServerPools) HealBucket" cmd/*.go
+grep -RIn "func (z \\*erasureServerPools) HealObject" cmd/*.go
+
+# 真正 object heal 的底層
+grep -RIn "func (er \\*erasureObjects) healObject" cmd/*.go
+```
+
+> 用意：當你看到「background/auto-heal 在跑」但不確定到底修了什麼，先用這些入口把 receiver 釐清，再回頭對照 `readAllFileInfo` / `objectQuorumFromMeta` / `erasure.Heal` / `RenameData` 這幾個最關鍵的重建與寫回點。

@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-11 20:00：Trace：Healing 補上 `HealFormat/HealBucket/HealObject` 的 receiver/落地實作索引與快速 grep；Troubleshooting：`canceling remote connection` 補上「如何把 grid connection 間接對回上層功能」的實務手法（MRF/background healing/scanner/subroute）。
+
 - 2026-02-11 08:00：Trace：PutObject vs Healing 追加「addPartial → MRF healRoutine → healObject」的精準檔案/函式串接（`cmd/erasure-object.go`、`cmd/mrf.go`）；Troubleshooting：`canceling remote connection` 補上與 MRF 補洞/queue 消費端的具體對照點。
 
 - 2026-02-10 20:00：Trace：PutObject vs Healing 補上 PutObject 成功但有洞時的 MRF/partial 記錄點（`er.addPartial` / `globalMRFState.addPartialOp`）與讀碼定位；Troubleshooting：`canceling remote connection` 關聯段落補上 MRF 補洞情境。
