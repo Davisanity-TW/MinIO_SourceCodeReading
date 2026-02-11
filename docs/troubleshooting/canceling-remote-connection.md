@@ -283,6 +283,8 @@ client 端有兩層時間戳：
 1) **Healing / Scanner / Rebalance / MRF 補洞 高負載時段**
 - 這些背景工作會把磁碟 I/O 拉滿，造成 request handler / grid handler 排隊變長。
 - 特別是「PutObject 寫入當下有 disk offline，但 write quorum 仍達成」的情境，MinIO 會記錄 partial/MRF，後續由背景補洞機制持續補寫，等於把 I/O 壓力拉長。
+  - `cmd/erasure-object.go`：`erasureObjects.addPartial()` → `globalMRFState.addPartialOp(partialOperation{...})`
+  - `cmd/mrf.go`：`mrfState.healRoutine()` 消費 queue，對每筆 `partialOperation` 呼叫 `healObject(...)`
 - 結果就是：即使網路沒斷，**對端 goroutine 處理 ping 來不及**，最後觸發 ~60s threshold。
 
 你可以用這兩個方向對照：

@@ -104,8 +104,19 @@ PutObject 有一個很關鍵但常被忽略的路徑：**client 端看起來「�
 你可以在 `cmd/erasure-object.go` 的 `erasureObjects.putObject()` 後段看到類似邏輯（不同版本細節會略有差）：
 - 若本次寫入期間有 disk offline，會呼叫：
   - `er.addPartial(bucket, object, fi.VersionID)`
-- 或把操作丟進 MRF state（Most Recently Failed）：
-  - `globalMRFState.addPartialOp(partialOperation{...})`
+
+在你這份 source tree 裡，`addPartial()` 本身就是把事件丟進 **MRF queue**（Most Recently Failed）：
+- 檔案：`cmd/erasure-object.go`
+- 函式：`func (er erasureObjects) addPartial(bucket, object, versionID string)`
+  - 內容：`globalMRFState.addPartialOp(partialOperation{ bucket, object, versionID, queued: time.Now() })`
+
+而 MRF queue 的消費端在：
+- 檔案：`cmd/mrf.go`
+- 函式：`func (m *mrfState) healRoutine(z *erasureServerPools)`
+  - 從 `m.opCh` 取出 `partialOperation`
+  - 對 object 會呼叫：`healObject(bucket, object, versionID, scanMode)`
+
+也就是：**PutObject(成功但缺片) → addPartial → MRF healRoutine → healObject() 真正補洞**。
 
 **讀碼定位建議（在 `/home/ubuntu/clawd/minio`）：**
 ```bash

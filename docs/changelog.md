@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-11 08:00：Trace：PutObject vs Healing 追加「addPartial → MRF healRoutine → healObject」的精準檔案/函式串接（`cmd/erasure-object.go`、`cmd/mrf.go`）；Troubleshooting：`canceling remote connection` 補上與 MRF 補洞/queue 消費端的具體對照點。
+
 - 2026-02-10 20:00：Trace：PutObject vs Healing 補上 PutObject 成功但有洞時的 MRF/partial 記錄點（`er.addPartial` / `globalMRFState.addPartialOp`）與讀碼定位；Troubleshooting：`canceling remote connection` 關聯段落補上 MRF 補洞情境。
 
 - 2026-02-10 08:00：Healing：補齊 scanner 觸發 `HealObject()` 的精準落點（`cmd/data-scanner.go: (*scannerItem).applyHealing()`、`madmin.HealOpts{Remove,ScanMode}`）；Troubleshooting：新增建議在事件/工單先記下的「最小資訊」清單（方便快速判斷網路 vs 對端忙）。
