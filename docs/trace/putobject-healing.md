@@ -114,9 +114,36 @@ PutObject 有一個很關鍵但常被忽略的路徑：**client 端看起來「�
 - 檔案：`cmd/mrf.go`
 - 函式：`func (m *mrfState) healRoutine(z *erasureServerPools)`
   - 從 `m.opCh` 取出 `partialOperation`
-  - 對 object 會呼叫：`healObject(bucket, object, versionID, scanMode)`
+  - 對 bucket/object 會呼叫：`healBucket(bucket, scanMode)` / `healObject(bucket, object, versionID, scanMode)`
 
 也就是：**PutObject(成功但缺片) → addPartial → MRF healRoutine → healObject() 真正補洞**。
+
+### 2.4.1 MRF `healRoutine()` 的「更精準」行為（實際 code）
+以下以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準（`cmd/mrf.go`）：
+
+1) **會跳過 `.minio.sys` 底下的特定路徑**（避免去 heal metacache/tmp/multipart）
+- `buckets/*/.metacache/*`
+- `tmp/*`
+- `multipart/*`
+- `tmp-old/*`
+
+2) **剛失敗的 op 會先等一下（讓網路有時間回復）**
+- 若 `now.Sub(u.queued) < 1s`：會 `time.Sleep(1s)`
+
+3) **每次 heal 之間會做節流（dynamic sleeper）**
+- `healSleeper := newDynamicSleeper(5, time.Second, false)`
+- 每次處理前：`wait := healSleeper.Timer(context.Background())`
+- heal 完後：`wait()`
+
+4) **scan mode 可被 partialOperation 帶入**
+- 預設 `scan := madmin.HealNormalScan`
+- 若 `u.scanMode != 0` 則用 `u.scanMode`
+
+5) **版本化物件：可能會對多個 VersionID 逐一呼叫 healObject**
+- 若 `len(u.versions) > 0`：每 16 bytes 解析成一個 UUID，逐一 `healObject(bucket, object, <uuid>, scan)`
+- 否則用 `u.versionID`
+
+> 實戰判讀：如果你看到「PutObject 已回 200/204，但某些節點後續仍在跑 HealObject」，而且 log/trace 又常伴隨 `canceling remote connection`，MRF 這條背景補洞線通常就是你要先對照的『自動修復來源』之一。
 
 **讀碼定位建議（在 `/home/ubuntu/clawd/minio`）：**
 ```bash

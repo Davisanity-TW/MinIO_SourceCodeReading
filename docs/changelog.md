@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-12 08:00：Trace：PutObject vs Healing 補上 `cmd/mrf.go: (*mrfState).healRoutine()` 的精準行為（skip `.minio.sys` 特定路徑、sleep/節流、scanMode、版本化物件 versions[] 的 healObject 迴圈），方便把「PutObject 成功但有洞」對到 MRF 背景補洞的實作細節。
+
 - 2026-02-11 20:00：Trace：Healing 補上 `HealFormat/HealBucket/HealObject` 的 receiver/落地實作索引與快速 grep；Troubleshooting：`canceling remote connection` 補上「如何把 grid connection 間接對回上層功能」的實務手法（MRF/background healing/scanner/subroute）。
 
 - 2026-02-11 08:00：Trace：PutObject vs Healing 追加「addPartial → MRF healRoutine → healObject」的精準檔案/函式串接（`cmd/erasure-object.go`、`cmd/mrf.go`）；Troubleshooting：`canceling remote connection` 補上與 MRF 補洞/queue 消費端的具體對照點。
