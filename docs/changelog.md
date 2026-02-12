@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-12 20:00：Troubleshooting：`canceling remote connection` 新增「MRF/Healing 交叉驗證」段落；Trace：Healing 頁補上「healing 高負載與 grid 斷線」的運維對照與最關鍵觀察點（`readAllFileInfo` / `erasure.Heal` / `RenameData`）。
+
 - 2026-02-12 08:00：Trace：PutObject vs Healing 補上 `cmd/mrf.go: (*mrfState).healRoutine()` 的精準行為（skip `.minio.sys` 特定路徑、sleep/節流、scanMode、版本化物件 versions[] 的 healObject 迴圈），方便把「PutObject 成功但有洞」對到 MRF 背景補洞的實作細節。
 
 - 2026-02-11 20:00：Trace：Healing 補上 `HealFormat/HealBucket/HealObject` 的 receiver/落地實作索引與快速 grep；Troubleshooting：`canceling remote connection` 補上「如何把 grid connection 間接對回上層功能」的實務手法（MRF/background healing/scanner/subroute）。

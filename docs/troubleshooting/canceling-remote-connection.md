@@ -164,7 +164,37 @@ if last > lastPingThreshold {
 
 ---
 
-## 6) 對照其他 log/metric：把「這條 grid log」跟實際症狀串起來
+## 6) 快速把「grid 斷線」跟 PutObject/Healing 補洞串起來（MRF/HealObject 交叉驗證）
+
+你如果同時在排：
+- `canceling remote connection ... not seen for ...`
+- PutObject latency 突然變差、或某些物件寫完後又被背景修復
+
+通常可以用下面這個「最短鏈路」把現象串起來：
+
+1) **先判斷是不是有「寫入成功但有洞」→ MRF 背景補洞**
+- PutObject 端：`cmd/erasure-object.go`
+  - `erasureObjects.putObject()` 後段可能呼叫 `er.addPartial(bucket, object, versionID)`
+  - `addPartial()` 會把 `partialOperation` 丟進 `globalMRFState` queue
+- MRF 消費端：`cmd/mrf.go: (*mrfState).healRoutine()`
+  - 會對 bucket/object 呼叫 `healObject(...)`（本質上就是走 `HealObject` 的修復路徑）
+
+2) **再確認 Healing 真的在跑**（你要的是「同時間窗」的證據）
+- source chain（最穩）：`erasureServerPools.HealObject` → `erasureSets.HealObject` → `erasureObjects.HealObject` → `(*erasureObjects).healObject`
+  - 位置：`cmd/erasure-server-pool.go` / `cmd/erasure-sets.go` / `cmd/erasure-healing.go`
+- 若你有 trace：對照 `madmin.TraceHealing`（server 端會在 `cmd/erasure-healing.go` 的 `healTrace()` 產生事件）
+
+3) **把瓶頸切到最有用的 3 個觀察點**（定位「為何 ping 跟不上」）
+- PutObject：`erasure.Encode()` / `renameData()` / `commitRenameDataDir()`（`cmd/erasure-object.go`）
+- Healing：`readAllFileInfo()` / `erasure.Heal()` / `disk.RenameData()`（`cmd/erasure-healing.go`）
+
+> 這些點若在同一時間窗大量堆積，最常見的結果就是：I/O/GC/排程壓力上來 → grid ping/pong handler 延遲累積 → 最終印出 `canceling remote connection`。
+
+（延伸閱讀：`docs/trace/putobject-healing.md` 把 PutObject ↔ Healing 的資料流/rename 寫回對照整理在一起。）
+
+---
+
+## 7) 對照其他 log/metric：把「這條 grid log」跟實際症狀串起來
 
 因為 `canceling remote connection ... not seen for ...` 本身不會告訴你「是哪個功能在用這條 grid connection」，所以實務上建議用同時間點做關聯：
 

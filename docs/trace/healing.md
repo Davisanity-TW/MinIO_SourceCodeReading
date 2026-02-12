@@ -356,6 +356,23 @@ if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
 
 ---
 
+## 3.4) 運維現象對照：Healing 高負載 ↔ `canceling remote connection`
+
+如果你在 production 看到：
+- healing/scanner/MRF 補洞在跑
+- 同時間大量出現 `canceling remote connection ... not seen for ...`
+
+常見的解釋是：**Healing 讀來源 shards + 寫回缺片** 把磁碟 I/O（加上 Go runtime 排程/GC）推高，導致 inter-node grid 的 ping/pong handler 來不及處理。
+
+建議你把觀察點對準到最底層 3 個位置（好下斷點/好做 profiling）：
+- `readAllFileInfo(...)`（metadata fan-out，`cmd/erasure-healing.go`）
+- `erasure.Heal(...)`（真正 RS 重建，`cmd/erasure-healing.go`）
+- `disk.RenameData(...)`（寫回/rename，`cmd/erasure-healing.go` → storage 層 `cmd/xl-storage.go`）
+
+Troubleshooting 參考：`docs/troubleshooting/canceling-remote-connection.md`（含 MRF/Healing 交叉驗證）。
+
+---
+
 ## 4) 讀碼下一步（先把你最需要排障的點補齊）
 - [ ] 從 `cmd/background-newdisks-heal-ops.go` 接到 `sets[setIdx].healErasureSet()` 的實作檔案與函式簽名
 - [ ] 找出「background healing（非新盤）」的 scheduler/worker（`initBackgroundHealing` 內部）
