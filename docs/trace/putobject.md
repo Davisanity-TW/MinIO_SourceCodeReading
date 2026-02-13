@@ -137,6 +137,26 @@ router.Methods(http.MethodPut).Path("/{object:.+}").
 > - 你要找「S3 層」跟「Erasure 層」誰在做什麼
 > 都很適合以 ObjectLayer 為切點。
 
+### 2.1 `api.ObjectAPI()` 可能回 nil：server 尚未就緒時的典型分支
+在某些時刻（例如啟動中、format/heal 還在跑、或 globalObjectAPI 尚未建立），`api.ObjectAPI()` 可能回 nil。
+
+PutObjectHandler 這類 handler 通常會有一段「server init 檢查」的模式：
+- `objectAPI := api.ObjectAPI()`
+- `if objectAPI == nil {` → 回 `ErrServerNotInitialized`（或對應的 API error）
+
+因此你在追 PutObject 路徑時，如果看到大量 `ServerNotInitialized`/503 類型回應：
+- 優先確認 `globalObjectAPI` 何時被設起來（啟動/format/erasure init 流程）
+- 再回頭看 `cmd/api-router.go:newObjectLayerFn()`/`globalObjectAPI` 的設定點
+
+快速定位（以 `/home/ubuntu/clawd/minio`）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+grep -RIn "ErrServerNotInitialized" -n cmd | head
+grep -RIn "newObjectLayerFn" -n cmd/api-router.go
+```
+
 ---
 
 ## 3. 實作：`newObjectLayer` → `erasureServerPools`

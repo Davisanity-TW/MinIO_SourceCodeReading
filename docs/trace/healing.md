@@ -19,6 +19,20 @@
 
 ## 1) 觸發點（Trigger points）— 先從「自動新盤 healing」落地
 
+### 1.0 先把「背景 healing」的兩條主線分清楚（讀碼時比較不會迷路）
+MinIO 啟動後通常同時存在兩套「會丟 heal 任務」的來源：
+
+1) **新盤/回復事件導向**（auto drive healing）
+- 入口：`cmd/background-newdisks-heal-ops.go: initAutoHeal()`
+- 特色：會鎖住 *特定 poolIdx/setIdx*，針對「某顆 disk」做集中式補齊
+
+2) **背景掃描/例行調度導向**（background heal routine）
+- 入口：`cmd/background-heal-ops.go: initBackgroundHealing()`
+- 特色：以 `healTask{bucket, object,...}` 為工作單位，worker 端統一分流到：
+  - `objAPI.HealFormat()` / `objAPI.HealBucket()` / `objAPI.HealObject()`
+
+> 實務上你看到「heal 很忙」時，先判斷是 (1) 某顆盤回復在補齊，還是 (2) background/scanner/MRF 在丟 object heal，方向會差很多。
+
 ### 1.1 `initAutoHeal()`：啟動後掛上自動 healing 的地方
 - 檔案：`cmd/background-newdisks-heal-ops.go`
 - function：`func initAutoHeal(ctx context.Context, objAPI ObjectLayer)`
