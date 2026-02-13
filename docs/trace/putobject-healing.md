@@ -161,13 +161,25 @@ grep -RIn "globalMRFState" -n cmd/erasure-object.go cmd/*.go
 
 ## 3) Healing：從 HealObject() 到 healObject()（如何挑來源、如何重建、如何寫回）
 
-### 3.1 HealObject 的入口層級（從 pool → sets → objects）
-Healing 跟 PutObject 一樣是分層下去：
-- `cmd/erasure-server-pool.go`：`(*erasureServerPools).HealObject()`
-- `cmd/erasure-sets.go`：`(*erasureSets).HealObject()`
-- `cmd/erasure-healing.go`：`(*erasureObjects).healObject()`（主要流程）
+### 3.1 HealObject 的入口層級（從 pool → sets → objects → healObject）
+Healing 跟 PutObject 一樣是分層下去；你要追「實際重建」最終會落到 `(*erasureObjects).healObject()`：
 
-（如果你要精準定位，建議直接在 repo 裡 grep `HealObject(` / `healObject(`。）
+1) `cmd/erasure-server-pool.go`
+   - `func (z *erasureServerPools) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+   - multi-pool 會對每個 pool 併發呼叫 `pool.HealObject()`，然後回傳第一個成功（nil error）的結果。
+
+2) `cmd/erasure-sets.go`
+   - `func (s *erasureSets) HealObject(...) (madmin.HealResultItem, error)`
+   - 直接 `return s.getHashedSet(object).HealObject(...)`
+
+3) `cmd/erasure-healing.go`
+   - `func (er erasureObjects) HealObject(...) (madmin.HealResultItem, error)`
+     - 先做 quick read：`readAllFileInfo(..., lock=false)` 判斷「是否全都 not found」（可以很快 return）
+     - 然後呼叫真正的修復：`er.healObject(...)`
+     - 若遇到 `errFileCorrupt` 且原本不是 deep scan，會自動把 `opts.ScanMode` 升級成 `madmin.HealDeepScan` 再 heal 一次。
+   - `func (er *erasureObjects) healObject(...) (madmin.HealResultItem, error)`（真正重建/寫回的主流程）
+
+（精準定位建議：在 `/home/ubuntu/clawd/minio` 直接 `grep -RIn "HealObject(ctx" cmd` + `grep -RIn "healObject(ctx" cmd/erasure-healing.go`。）
 
 ### 3.2 healObject() 的「前半段」：讀 meta → 算 quorum → 挑有效來源
 檔案：`cmd/erasure-healing.go`
