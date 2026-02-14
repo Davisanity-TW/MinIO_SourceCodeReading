@@ -116,7 +116,31 @@ PutObject 有一個很關鍵但常被忽略的路徑：**client 端看起來「�
   - 從 `m.opCh` 取出 `partialOperation`
   - 對 bucket/object 會呼叫：`healBucket(bucket, scanMode)` / `healObject(bucket, object, versionID, scanMode)`
 
-也就是：**PutObject(成功但缺片) → addPartial → MRF healRoutine → healObject() 真正補洞**。
+### 2.4.2 MRF 補洞的「完整 call chain」（精準到檔案/receiver）
+把 `mrf.go` 裡的 `healObject(...)` 往下追，你可以把「背景補洞」跟 `HealObject()` 的正式 healing 路徑接起來：
+
+1) `cmd/mrf.go`
+- `func (m *mrfState) healRoutine(z *erasureServerPools)`
+  - `healObject(bucket, object, versionID, scanMode)`（內部會呼叫 object layer 的 heal）
+
+2) `cmd/erasure-server-pool.go`
+- `func (z *erasureServerPools) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+  - multi-pool：併發呼叫各 pool 的 heal，回第一個成功結果
+
+3) `cmd/erasure-sets.go`
+- `func (s *erasureSets) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+  - `return s.getHashedSet(object).HealObject(...)`
+
+4) `cmd/erasure-healing.go`
+- `func (er erasureObjects) HealObject(...) (madmin.HealResultItem, error)`
+  - quick read：`readAllFileInfo(..., lock=false)`
+  - then：`er.healObject(...)`
+- `func (er *erasureObjects) healObject(...)`（真正重建→寫回：`erasure.Heal()` + `disk.RenameData()`）
+
+也就是：
+**PutObject(成功但缺片) → addPartial → globalMRFState queue → mrfState.healRoutine → (ObjectLayer) HealObject → erasureObjects.healObject 真正補洞**。
+
+> 實務意義：當你看到「PutObject client 回 200/204，但同時間又有 healing/scanner 很忙」時，MRF 這條線往往就是「為什麼 heal 會突然變多」的直接原因。
 
 ### 2.4.1 MRF `healRoutine()` 的「更精準」行為（實際 code）
 以下以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準（`cmd/mrf.go`）：
