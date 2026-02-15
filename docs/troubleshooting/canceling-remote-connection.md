@@ -2,6 +2,16 @@
 
 > 這個訊息不是 S3 client 端的錯誤本體，而是 **MinIO server 內部的 inter-node RPC（grid）** 在判定「對端連線不健康」時，主動切斷遠端連線的 log。
 
+## 0.5) 常見 log 長相（先把 local/remote 看懂）
+你通常會看到類似：
+```
+WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for 1m2.3s
+```
+- `10.0.0.10:9000` 是 **local（印 log 的這台）**
+- `10.0.0.11:9000` 是 **remote（被判定看不到 ping 的對端）**
+
+因此排查時請先把「哪一對 node」固定下來（local/remote），再去對照同時間窗 remote 的 I/O/CPU/GC/healing/rebalance/scanner 狀態。
+
 ---
 
 ## 1) 這個錯誤在哪裡出現？（Source code）
