@@ -90,9 +90,24 @@ PutObject 在 encode 寫完 `.minio.sys/tmp` 後，通常會進入兩段「把 t
 - method：`func (er erasureObjects) commitRenameDataDir(...)`
 - 呼叫：`er.commitRenameDataDir(ctx, bucket, object, oldDataDir, onlineDisks)`
 
-3) **落到 storage 層 rename**
+3) **落到 storage 層 rename（PutObject 的「原子切換點」）**
+PutObject 這段最終會把 `.minio.sys/tmp` 裡的 shards 以 rename 方式切換到正式路徑；你在 trace/pprof 上看到卡住時，最有用的落點通常是 storage 層的 rename。
+
 - interface：`cmd/storage-interface.go`（`StorageAPI.RenameData`）
 - 實作：`cmd/xl-storage.go`（`func (s *xlStorage) RenameData(...)`）
+
+讀碼定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# PutObject 端 rename/commit 的主要函式
+grep -RIn "func renameData\(" -n cmd/erasure-object.go cmd/*.go
+grep -RIn "commitRenameDataDir\(" -n cmd/erasure-object.go cmd/*.go
+
+# storage 層 RenameData 落地
+grep -RIn "type StorageAPI" -n cmd/storage-interface.go
+grep -RIn "RenameData\(" -n cmd/storage-interface.go cmd/xl-storage.go
+```
 
 > 觀察點：要定位「卡在 encode/tmp/rename/commit 哪一段」時，最有效的切點通常是：`erasure.Encode()`、`renameData()`、`commitRenameDataDir()` 這三個位置。
 

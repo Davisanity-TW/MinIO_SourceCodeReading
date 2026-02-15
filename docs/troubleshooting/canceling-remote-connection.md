@@ -24,6 +24,8 @@ if last > lastPingThreshold {
 - `clientPingInterval = 15s`（`minio/internal/grid/grid.go`）
 - `lastPingThreshold = 4 * clientPingInterval`（`minio/internal/grid/muxserver.go`）
   - 也就是 **~60 秒沒看到 ping**，server 端就會判定 remote 不健康並取消。
+
+補充：這條 log 出現在 `muxserver.go`，代表它是針對 **streaming mux（MuxID != 0）** 的存活檢查（而不是單純整條 Connection 的 MuxID=0 ping/pong）。因此你在現場看到它大量出現時，常常不是「所有 RPC 都斷」而是「某些 streaming/長連線類的 grid traffic 心跳跟不上」。
 - `defaultSingleRequestTimeout = time.Minute`（`minio/internal/grid/grid.go`）
   - 非 streaming 的單次 request（MuxID=0）如果 context 沒 deadline，會以這個 timeout 當預設。
 

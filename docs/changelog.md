@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-15 08:00：Trace：PutObject vs Healing：補強 PutObject 端 rename/commit 的讀碼定位點（`renameData`/`commitRenameDataDir` → `StorageAPI.RenameData`/`xlStorage.RenameData`）；Troubleshooting：`canceling remote connection` 補充此 log 對應 streaming mux（MuxID!=0）存活檢查的語意。
+
 - 2026-02-14 20:00：Trace：PutObject vs Healing：補齊 MRF（PutObject 成功但缺片）一路接到 `HealObject()`→`erasureObjects.healObject()` 的完整 call chain（含檔案/receiver）。
 
 - 2026-02-13 08:00：Trace：PutObject 補上「server 尚未就緒（ObjectAPI==nil）」時的典型分支與 grep 定位；Trace：Healing 補上「auto drive healing vs background heal routine」兩條主線的讀碼分流說明。
