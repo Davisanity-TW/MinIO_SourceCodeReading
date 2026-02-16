@@ -103,6 +103,24 @@ if last > lastPingThreshold {
 
 這樣你後續要判斷是「網路」還是「對端忙到心跳處理不了」會快很多。
 
+### 2.7) 如果你有 Prometheus：建議同步截圖/記錄的 metrics（超省時間）
+`canceling remote connection` 很常是「資源壓力 → grid 心跳處理延遲」的結果；若你有 Prometheus，建議在同一時間窗把這幾類指標拉出來一起看：
+
+- **Go runtime（判斷 GC/排程壓力）**
+  - `go_gc_duration_seconds`（或 `go_gc_duration_seconds_sum/count`）
+  - `go_goroutines`
+  - `process_cpu_seconds_total`
+
+- **MinIO healing / scanner / rebalance（判斷是否背景工作把 I/O 打滿）**
+  - healing / scanner / rebalance 相關 counter/gauge（依你版本/暴露的 metrics 名稱不同）
+  - 若你有 Loki/ELK，直接用 log 關聯 healing/scanner 的 phase 也可以
+
+- **Node / disk I/O（判斷是否磁碟 latency 飆高）**
+  - node exporter：`node_disk_io_time_seconds_total`、`node_disk_read_time_seconds_total`、`node_disk_write_time_seconds_total`、`node_disk_io_time_weighted_seconds_total`
+  - `node_load1` / `node_cpu_seconds_total{mode="iowait"}`
+
+> 重點不是 metric 名字要一模一樣，而是同時間窗能不能看到「GC/CPU」或「disk latency」的明顯尖峰；一旦對上了，通常就能把問題從『grid 斷線』快速收斂到『網路』或『資源/背景任務』。
+
 ---
 
 ## 3) 最常見原因（按發生機率排序）

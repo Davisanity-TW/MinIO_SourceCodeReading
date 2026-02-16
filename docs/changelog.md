@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-16 08:00：Troubleshooting：`canceling remote connection` 補上「Prometheus 建議對照 metrics」小節（Go runtime / healing/scanner/rebalance / node disk I/O），讓排查更快收斂到網路 vs 資源壓力。
+
 - 2026-02-15 20:00：Troubleshooting：`canceling remote connection` 新增「常見 log 長相」小節，快速判讀 local/remote（`local->remote`）並提醒先固定節點對照同時間窗資源/背景任務。
 
 - 2026-02-15 08:00：Trace：PutObject vs Healing：補強 PutObject 端 rename/commit 的讀碼定位點（`renameData`/`commitRenameDataDir` → `StorageAPI.RenameData`/`xlStorage.RenameData`）；Troubleshooting：`canceling remote connection` 補充此 log 對應 streaming mux（MuxID!=0）存活檢查的語意。
