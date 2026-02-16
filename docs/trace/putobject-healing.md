@@ -216,6 +216,9 @@ Healing 跟 PutObject 一樣是分層下去；你要追「實際重建」最終�
      - 先做 quick read：`readAllFileInfo(..., lock=false)` 判斷「是否全都 not found」（可以很快 return）
      - 然後呼叫真正的修復：`er.healObject(...)`
      - 若遇到 `errFileCorrupt` 且原本不是 deep scan，會自動把 `opts.ScanMode` 升級成 `madmin.HealDeepScan` 再 heal 一次。
+       - 檔案：`cmd/erasure-healing.go`
+       - 你要找的判斷通常長得像：`if errors.Is(err, errFileCorrupt) && opts.ScanMode != madmin.HealDeepScan { opts.ScanMode = madmin.HealDeepScan; return er.healObject(...) }`
+       - 實務意義：你看到 heal result/trace 變成 deep scan，不一定是 admin 指定，而可能是 **repair 過程自動升級**。
    - `func (er *erasureObjects) healObject(...) (madmin.HealResultItem, error)`（真正重建/寫回的主流程）
 
 （精準定位建議：在 `/home/ubuntu/clawd/minio` 直接 `grep -RIn "HealObject(ctx" cmd` + `grep -RIn "healObject(ctx" cmd/erasure-healing.go`。）

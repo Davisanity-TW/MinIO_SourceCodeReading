@@ -123,6 +123,30 @@ if last > lastPingThreshold {
 
 ---
 
+## 2.8) 快速把這條 log 跟「MinIO 內部在忙什麼」對起來（更像筆記頁的用法）
+
+這條 `canceling remote connection ... not seen for ...` 本身沒有印出「是哪個上層功能/哪個 subroute」在用這條 streaming mux，所以排查時更有效的作法是：
+
+1) **先把 remote 節點固定下來**（從 log 的 `local->remote`），然後在同一時間窗（±5 分鐘）看 remote 節點是否正在跑這些容易把 I/O 打滿的背景工作：
+- healing（含 MRF 補洞）
+- scanner（data scanner / metacache scan）
+- rebalance
+
+2) **用「最短 call chain」把背景工作對回 source code**（方便你在腦中把現象跟實作連起來）：
+- PutObject（寫入達 quorum 但有 disk offline）→ `erasureObjects.addPartial()` → `globalMRFState.addPartialOp(...)`（`cmd/erasure-object.go`）
+- MRF 消費端補洞 → `mrfState.healRoutine()`（`cmd/mrf.go`）
+- 真正 repair 會落到：`erasureServerPools.HealObject` → `erasureSets.HealObject` → `erasureObjects.healObject`（`cmd/erasure-healing.go`）
+
+3) **若你同時間看到 healing/scanner 很忙**，通常要把瓶頸對準到「最可能造成 ping handler 排隊」的點，而不是只盯 grid：
+- Healing：`readAllFileInfo(...)` / `erasure.Heal(...)` / `disk.RenameData(...)`（`cmd/erasure-healing.go`）
+- PutObject：`erasure.Encode(...)` / `renameData(...)` / `commitRenameDataDir(...)`（`cmd/erasure-object.go`）
+
+延伸閱讀（同 repo）：
+- Trace：PutObject vs Healing：`docs/trace/putobject-healing.md`
+- Healing 路徑追蹤：`docs/trace/healing.md`
+
+---
+
 ## 3) 最常見原因（按發生機率排序）
 
 ### A) 網路抖動 / 封包丟失 / 連線不穩

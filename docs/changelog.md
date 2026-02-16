@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-16 20:00：Troubleshooting：`canceling remote connection` 補上「如何把 log 跟 healing/scanner/MRF/PutObject 內部負載對起來」的快速筆記段落；Trace：PutObject vs Healing 補上 `HealObject()` 遇到 `errFileCorrupt` 會自動升級 deep scan 再重試的精準定位提示。
+
 - 2026-02-16 08:00：Troubleshooting：`canceling remote connection` 補上「Prometheus 建議對照 metrics」小節（Go runtime / healing/scanner/rebalance / node disk I/O），讓排查更快收斂到網路 vs 資源壓力。
 
 - 2026-02-15 20:00：Troubleshooting：`canceling remote connection` 新增「常見 log 長相」小節，快速判讀 local/remote（`local->remote`）並提醒先固定節點對照同時間窗資源/背景任務。
