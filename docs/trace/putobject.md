@@ -338,6 +338,23 @@ grep -RIn "newObjectLayerFn" -n cmd/api-router.go
 
 > 建議：如果你要做 profiling 或插 trace，通常把觀察點放在「handler → ObjectLayer」與「`erasureObjects.putObject` 內部 temp/quorum/write」這兩段，收斂最快。
 
+## 4.4 PutObject「寫成功但仍可能留下洞」：MRF/partial 與後續 Healing 的關聯
+
+在 erasure 環境下，PutObject 只要達到 write quorum，就可能回成功；但如果寫入當下有部分 disks offline / timeout：
+- client 端看起來「成功」
+- 但後端可能留下「某些 shard 沒寫到」的洞
+
+在你目前的 source tree（`/home/ubuntu/clawd/minio`）裡，這類情境通常會在 `cmd/erasure-object.go: erasureObjects.putObject()` 後段走到：
+- `er.addPartial(bucket, object, fi.VersionID)` → `globalMRFState.addPartialOp(...)`（把補洞工作丟進 MRF queue）
+
+後續由 MRF/背景 healing/scanner 消費 queue，最終仍會落到：
+- `erasureServerPools.HealObject` → `erasureSets.HealObject` → `erasureObjects.healObject`
+
+這也是你在現場常看到「PutObject latency/錯誤」與「healing/scanner 很忙」同時出現的原因之一。
+
+延伸閱讀（同 repo）：
+- `docs/trace/putobject-healing.md`（PutObject ↔ Healing 的資料流與 rename/寫回對照）
+
 ## 5. 讀碼「下一步」清單
 - [ ] `cmd/api-router.go`：確認你的 RELEASE tag 版本 PutObject route 是否同樣有 Copy/Extract/Append reject 的分流
 - [ ] `cmd/object-handlers.go`：把 `PutObjectHandler` 內部關鍵步驟拆小節：auth、hash、SSE、metadata、etag、通知事件
