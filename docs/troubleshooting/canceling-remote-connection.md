@@ -425,6 +425,27 @@ client 端有兩層時間戳：
 
 這條 `canceling remote connection ...` log 本身不會印 subroute / handler，所以只能用「間接證據」把它對回上層功能。下面是兩個最省時的方法：
 
+### 8.0 先做一個「最便宜的」交叉驗證：是不是被 Healing/MRF/scanner 拉爆？
+
+你只要能在同一時間窗（±5 分鐘）找到其中任一條證據，通常就足以把方向從「網路問題」轉成「資源/背景任務壓力」：
+
+- **MRF queue 正在消費**（PutObject 成功但缺片 → 背景補洞）：
+  - source chain：`cmd/erasure-object.go: er.addPartial()` → `cmd/mrf.go: (*mrfState).healRoutine()` → `HealObject()`
+  - 實務做法：在集中式 log/節點 log 內 grep `mrf` / `partial` / `HealObject`（依你版本 log 文案不同）。
+
+- **scanner 正在觸發 heal**：
+  - `cmd/data-scanner.go: (*scannerItem).applyHealing()` 會在掃描到不一致時呼叫 `o.HealObject(...)`
+
+- **background healing 正在跑（尤其新盤/回復事件）**：
+  - `cmd/background-newdisks-heal-ops.go: monitorLocalDisksAndHeal()` → `healFreshDisk()`
+
+- **磁碟 latency 指標同時尖峰**：
+  - `iostat -x` 的 `await/util`、或 node exporter 的 `node_disk_io_time_weighted_seconds_total` 在同時間窗跳高
+
+> 目的不是一次就找出根因，而是用便宜訊號把大方向定出來：
+> - 如果「背景工作 + I/O latency」同時存在，你應該把 `canceling remote connection` 視為 *症狀*。
+> - 如果同時間沒有背景工作且 TCP retrans 明顯上升，才優先往網路層追。
+
 ### 8.1 從 remote IP:port 反查同時間窗的「背景工作」
 同一時間窗（±5 分鐘）在 remote 節點（或集中式 log）做關聯，最常見的三條線：
 - **MRF 補洞**：`cmd/mrf.go`（`mrfState.healRoutine()`）

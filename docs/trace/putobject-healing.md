@@ -282,7 +282,42 @@ Healing 跟 PutObject 一樣是分層下去；你要追「實際重建」最終�
 
 ---
 
-## 4) 把 PutObject 與 Healing 串起來的「實務對照」
+## 4) 快速 grep / 跳轉清單（把 call chain 變成 10 秒內可定位）
+
+在不同 RELEASE tag 版本間，檔案可能拆分/合併；最穩的方式是直接用 signature grep。
+
+以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# PutObject（handler → object layer → erasure）
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" cmd/object-handlers.go
+grep -RIn "func (z \\*erasureServerPools) PutObject" cmd/*.go
+grep -RIn "func (s \\*erasureSets) PutObject" cmd/*.go
+grep -RIn "func (er erasureObjects) putObject" cmd/*.go
+
+# PutObject rename/commit 的切換點
+grep -RIn "func renameData\\(" cmd/*.go
+grep -RIn "commitRenameDataDir\\(" cmd/*.go
+
+# Healing（MRF → HealObject → healObject）
+grep -RIn "type mrfState" cmd/mrf.go
+grep -RIn "healRoutine" cmd/mrf.go
+grep -RIn "func (z \\*erasureServerPools) HealObject" cmd/*.go
+grep -RIn "func (s \\*erasureSets) HealObject" cmd/*.go
+grep -RIn "func (er \\*erasureObjects) healObject" cmd/*.go
+
+# 真正寫回（storage 層 rename）
+grep -RIn "RenameData\\(" cmd/storage-interface.go cmd/xl-storage.go
+```
+
+> 你要做 profiling/trace/斷點時，通常先把觀察點放在：
+> - PutObject：`erasure.Encode()` / `renameData()` / `commitRenameDataDir()`
+> - Healing：`readAllFileInfo()` / `erasure.Heal()` / `disk.RenameData()`
+
+---
+
+## 5) 把 PutObject 與 Healing 串起來的「實務對照」
 
 你可以用下面這個簡單對照表，把現象快速歸類：
 

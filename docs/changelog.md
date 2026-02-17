@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-17 20:00：Troubleshooting：`canceling remote connection` 新增「先做最便宜的交叉驗證（Healing/MRF/scanner/I/O latency）」段落；Trace：PutObject vs Healing 新增「快速 grep / 跳轉清單」把 put/rename/commit/heal/renameData 觀察點變成 10 秒可定位。
+
 - 2026-02-17 08:00：Troubleshooting：`canceling remote connection` 新增「pprof/trace 進階判讀」段落（用 goroutine/GC 訊號區分網路 vs I/O/排程壓力）；Trace：PutObject 補上「寫成功但仍可能留下洞（MRF/partial）→ 後續 Healing」的實務串接說明。
 
 - 2026-02-16 20:00：Troubleshooting：`canceling remote connection` 補上「如何把 log 跟 healing/scanner/MRF/PutObject 內部負載對起來」的快速筆記段落；Trace：PutObject vs Healing 補上 `HealObject()` 遇到 `errFileCorrupt` 會自動升級 deep scan 再重試的精準定位提示。
