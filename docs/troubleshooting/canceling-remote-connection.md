@@ -41,6 +41,21 @@ if last > lastPingThreshold {
 
 > 備註：這些 interval/threshold 目前是 code 常數（不是 config 參數）。因此看到 `~60s not seen` 更應該把它當作「網路/資源讓心跳停掉」的症狀，而不是先想調參。
 
+### 1.0.1（補）同時間窗若你也看到 Healing/MRF 很忙：先用行號把修復路徑定位起來
+這個 grid log 本身不會說「上層是哪個功能在用這條 streaming mux」，但在現場最常見的共振來源是：**Healing / scanner / rebalance / MRF 補洞把 I/O/排程壓力拉高**，導致 ping handler 更新 `LastPing` 來不及。
+
+以本 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）當下 checkout 直接 grep 到的入口位置（行號會隨版本漂移）：
+- `cmd/erasure-server-pool.go:2319`：`(*erasureServerPools).HealObject(...)`
+- `cmd/erasure-healing.go:242`：`(*erasureObjects).healObject(...)`（真正 RS rebuild + `RenameData()` 寫回）
+
+快速重抓定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd | head
+```
+
 ### 1.1 這條 log 是誰在檢查？（check loop）
 同一個檔案 `minio/internal/grid/muxserver.go` 內，會有 `checkRemoteAlive()` 的週期性檢查邏輯：
 - 讀 `muxServer.LastPing`

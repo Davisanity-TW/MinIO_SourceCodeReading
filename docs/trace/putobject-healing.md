@@ -37,6 +37,25 @@ grep -RIn "func \(s \*erasureSets\) PutObject" -n cmd/erasure-sets.go
 grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
 ```
 
+### 1.1（補）以目前 workspace source tree 的「精準位置」對照（含行號）
+> 下面行號是我在本 workspace（`/home/ubuntu/clawd/minio`）當下 checkout 直接 grep 出來的結果；你換 MinIO 版本/commit 後行號會飄，但函式簽名不太會變。
+
+- `cmd/object-handlers.go`：
+  - `objectAPIHandlers.PutObjectHandler()`：`cmd/object-handlers.go:1987`
+- `cmd/erasure-server-pool.go`：
+  - `(*erasureServerPools).PutObject()`：`cmd/erasure-server-pool.go:1056`
+- `cmd/erasure-object.go`：
+  - `erasureObjects.putObject()`：`cmd/erasure-object.go:1247`
+
+如果要自己重抓一次（避免行號不一致）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+grep -RIn "func (z \\*erasureServerPools) PutObject" -n cmd | head
+grep -RIn "func (er erasureObjects) putObject" -n cmd | head
+```
+
 ---
 
 ## 2) PutObject 落盤的三個關鍵階段：Encode → tmp → rename/commit
