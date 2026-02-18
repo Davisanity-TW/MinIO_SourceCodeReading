@@ -18,7 +18,8 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 在你目前的 MinIO source tree（workspace：`/home/ubuntu/clawd/minio`）中，字串出現在：
 
 - `minio/internal/grid/muxserver.go`
-  - `(*muxServer).checkRemoteAlive()`
+  - `(*muxServer).checkRemoteAlive()`（本機 workspace commit `b413ff9fd`：`muxserver.go:236`）
+  - log 字串本體：`muxserver.go:246`
 
 對應邏輯（節錄）：
 ```go
@@ -31,8 +32,8 @@ if last > lastPingThreshold {
 ```
 
 其中：
-- `clientPingInterval = 15s`（`minio/internal/grid/grid.go`）
-- `lastPingThreshold = 4 * clientPingInterval`（`minio/internal/grid/muxserver.go`）
+- `clientPingInterval = 15s`（`minio/internal/grid/grid.go:58`）
+- `lastPingThreshold = 4 * clientPingInterval`（`minio/internal/grid/muxserver.go:31`）
   - 也就是 **~60 秒沒看到 ping**，server 端就會判定 remote 不健康並取消。
 
 補充：這條 log 出現在 `muxserver.go`，代表它是針對 **streaming mux（MuxID != 0）** 的存活檢查（而不是單純整條 Connection 的 MuxID=0 ping/pong）。因此你在現場看到它大量出現時，常常不是「所有 RPC 都斷」而是「某些 streaming/長連線類的 grid traffic 心跳跟不上」。
