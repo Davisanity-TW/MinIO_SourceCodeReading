@@ -1,5 +1,10 @@
 # Trace：PutObject vs Healing（PutObject 寫入後，Healing 怎麼補洞/重建）
 
+> TL;DR：
+> - **PutObject** 寫入達到 write quorum 就可能回成功，但仍可能留下「部分 disks 缺片」
+> - 缺片會被記到 **MRF (Most Recently Failed)** queue：`addPartial()` → `globalMRFState.addPartialOp()`
+> - 後續由 **MRF/scanner/background healing** 走 `HealObject()` → `erasureObjects.healObject()` 做 RS 重建並 `RenameData()` 寫回
+
 > 目標：把 **PutObject 的落盤/rename/commit** 路徑，跟 **Healing（healObject）** 的「讀來源 → 重建 → 寫回」路徑接起來。
 >
 > 你在排查的核心問題通常是：
@@ -349,3 +354,40 @@ grep -RIn "RenameData\\(" cmd/storage-interface.go cmd/xl-storage.go
 - healing/scanner 時段同時出現 `canceling remote connection ... not seen for ...`：
   - 常見是「資源壓力（I/O/CPU/GC）」讓 grid ping handler 跑不動
   - 連到 troubleshooting 頁：`/troubleshooting/canceling-remote-connection`
+
+---
+
+## 6) 精準定位「部分寫入」：addPartial → MRF healRoutine → HealObject
+
+如果你在現場看到「PutObject 成功回應」但後續 healing/scanner 突然變多，想快速驗證是不是 **quorum 過了但有洞（partial）**，最有效的是把這 3 個點用 grep 釘死：
+
+1) **PutObject 記 partial 的入口（產生者）**
+- 檔案：`cmd/erasure-object.go`
+- 常見呼叫：`er.addPartial(bucket, object, fi.VersionID)`
+- 常見實作：`func (er erasureObjects) addPartial(...)` → `globalMRFState.addPartialOp(partialOperation{...})`
+
+2) **MRF queue 的消費端（背景補洞調度者）**
+- 檔案：`cmd/mrf.go`
+- 入口：`func (m *mrfState) healRoutine(z *erasureServerPools)`
+  - 從 `m.opCh` 取出 `partialOperation`
+  - 依內容呼叫 `healBucket(...)` / `healObject(...)`
+
+3) **真正做修復的 ObjectLayer 路徑（執行者）**
+- `cmd/erasure-server-pool.go`：`(*erasureServerPools).HealObject(...)`
+- `cmd/erasure-sets.go`：`(*erasureSets).HealObject(...)`
+- `cmd/erasure-healing.go`：`erasureObjects.HealObject(...)` → `(*erasureObjects).healObject(...)`
+
+建議你在版本對照時不要猜檔案拆分，直接用 signature grep：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "addPartial(" cmd | head -n 50
+grep -RIn "globalMRFState\.addPartialOp" cmd | head -n 50
+
+grep -RIn "func (m \*mrfState) healRoutine" cmd/mrf.go
+
+grep -RIn "func (z \*erasureServerPools) HealObject" cmd | head
+grep -RIn "func (er \*erasureObjects) healObject" cmd | head
+```
+
+> 實務用法：把 grep 結果（檔案/行號）貼到 incident note 裡，後續任何人都可以在同一個 RELEASE tag 上快速跳轉，不需要再重新推一次 call chain。

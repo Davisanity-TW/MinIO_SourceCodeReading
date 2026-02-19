@@ -439,6 +439,15 @@ client 端有兩層時間戳：
 
 ## 8) 進一步把 grid connection「對到是哪個上層功能」的實務手法
 
+### 8.0.1 補：為什麼這條 log 常常看起來像「無緣無故斷線」？（streaming mux 的特性）
+你看到的訊息是由 `minio/internal/grid/muxserver.go: (*muxServer).checkRemoteAlive()` 印出的，它監控的是 **MuxID != 0 的 streaming mux** 心跳（`muxServer.LastPing`）。
+
+因此它的常見現象是：
+- S3 API 可能還能跑（或至少不是同時全掛）
+- 但某些「長連線/大量資料流」的內部 RPC（例如 healing/scanner/rebalance 的某些路徑）心跳更新更容易被 I/O/排程壓力拖慢
+
+換句話說：這條 log 更像是「某類 background traffic 的 streaming connection 心跳跟不上」的症狀，而不一定代表整個 cluster 立刻 split-brain。
+
 這條 `canceling remote connection ...` log 本身不會印 subroute / handler，所以只能用「間接證據」把它對回上層功能。下面是兩個最省時的方法：
 
 ### 8.0 先做一個「最便宜的」交叉驗證：是不是被 Healing/MRF/scanner 拉爆？

@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-19 20:00：Trace：PutObject vs Healing 加上 TL;DR 與「addPartial → MRF healRoutine → HealObject」的精準定位段落；Troubleshooting：`canceling remote connection` 補充 streaming mux（MuxID!=0）特性說明，降低誤判成整體 cluster 斷線。
+
 - 2026-02-18 20:00：Troubleshooting：`canceling remote connection` 補上 grid 相關精準行號（`checkRemoteAlive`、log 字串位置、`clientPingInterval`、`lastPingThreshold`）。
 
 - 2026-02-18 08:00：Trace：PutObject vs Healing 補上「以目前 workspace source tree 對照的精準行號（PutObjectHandler / erasureServerPools.PutObject / erasureObjects.putObject）」；Troubleshooting：`canceling remote connection` 補上「Healing 入口的精準行號（HealObject/healObject）+ 重新 grep 指令」。
