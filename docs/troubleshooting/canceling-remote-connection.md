@@ -486,3 +486,33 @@ grid 的 subroute 機制在：
 但因為 `checkRemoteAlive()` 這條 log 沒帶 subroute，所以若你真的要精準到「是哪個功能佔用/卡住 ping」，通常需要：
 - 同時間窗對照 **pprof/trace**（如果你有開），或
 - 在你自己的 fork/測試環境把 `gridLogIf` 加上 subroute/handler 的額外資訊再重現（production 不建議直接改）。
+
+---
+
+## 2.7) 直接把「哪個功能」用到這條 grid 連線抓出來：用 `mc admin trace --type internal`
+
+因為 `canceling remote connection ...` 只告訴你「某條 inter-node grid streaming mux 的 ping 沒跟上」，**不會告訴你上層是哪個功能在跑**。
+
+在 MinIO 內部，grid 的 request/response 也會走 **internal trace**（`internal/grid/trace.go` 會把 handler 名稱組成 `grid.<HandlerID>` 送到 trace stream）。
+
+你可以用這個方法把「同一時間窗到底是哪類 handler 在狂打」抓出來：
+
+1) 在任一節點跑 trace（建議加時間窗、避免噴太多）：
+```bash
+# 觀察 60~120 秒就很有價值
+mc admin trace --type internal --json <ALIAS> | jq -r 'select(.funcName|startswith("grid.")) | [.time,.nodeName,.funcName,.path,.error] | @tsv'
+```
+
+2) 對照 `canceling remote connection local->remote` 的那一對 endpoint：
+- trace 事件的 `nodeName` 是 remote（對端）
+- `funcName` 會長得像：`grid.<handler>`（例如 storage/peer/lock 相關 handler）
+
+3) 如果你在同一時間窗看到：
+- `grid.*` 的某一類 handler 大量出現、而且 duration 拉長
+- 同時又有 `canceling remote connection ... not seen for ~60s`
+
+通常可以收斂成兩種方向：
+- **網路方向**：trace 的 handler 幾乎沒有進來（或 error 多為連線層），但仍大量 cancel → 更像 ping/pong 本身被丟包/中間設備斷線
+- **資源方向（更常見）**：trace 顯示 handler 進來但 duration 飆高、error 少 → 更像對端忙到 handler / ping 更新 `LastPing` 來不及
+
+> 小提醒：如果你看到 duration 尖峰集中在 heal/scanner/mrf 時段，請把它跟 `/trace/putobject-healing` 的 MRF/HealObject call chain 一起看，通常能更快定位「是 heal I/O 把節點拖慢」還是「純網路抖動」。

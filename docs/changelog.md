@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-20 20:00：Troubleshooting：`canceling remote connection` 新增「用 `mc admin trace --type internal` 抓出 grid handler」段落，協助把 mux cancel 對應回實際功能流量。
+
 - 2026-02-19 20:00：Trace：PutObject vs Healing 加上 TL;DR 與「addPartial → MRF healRoutine → HealObject」的精準定位段落；Troubleshooting：`canceling remote connection` 補充 streaming mux（MuxID!=0）特性說明，降低誤判成整體 cluster 斷線。
 
 - 2026-02-18 20:00：Troubleshooting：`canceling remote connection` 補上 grid 相關精準行號（`checkRemoteAlive`、log 字串位置、`clientPingInterval`、`lastPingThreshold`）。
