@@ -391,3 +391,63 @@ grep -RIn "func (er \*erasureObjects) healObject" cmd | head
 ```
 
 > 實務用法：把 grep 結果（檔案/行號）貼到 incident note 裡，後續任何人都可以在同一個 RELEASE tag 上快速跳轉，不需要再重新推一次 call chain。
+
+### 3.2（補）`healObject()` 內部真正重建的三段：Read sources → RS rebuild → RenameData 寫回
+
+> 你要把 Healing 跟「實際磁碟 I/O」對起來時，**最關鍵**的是追到 `(*erasureObjects).healObject()`，因為真正的：
+> - 讀哪些 disks/哪些 parts 當來源
+> - 何時觸發 `erasure.Heal(...)`（RS 重建）
+> - 何時對缺片 disk 做 `RenameData(...)` 寫回
+> 都集中在這裡。
+
+以本 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）為準，你可以用下面方式快速定位：
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+# 1) HealObject() 入口與 healObject() 本體
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
+grep -RIn "func (er erasureObjects) HealObject" -n cmd/erasure-healing.go
+
+# 2) RS rebuild 的核心呼叫點
+grep -RIn "\\.Heal(ctx" -n cmd/erasure-healing.go cmd/*.go | head
+
+# 3) 寫回缺片的落地點（storage 層 rename）
+grep -RIn "RenameData\\(" -n cmd/erasure-healing.go cmd/xl-storage.go cmd/storage-interface.go | head
+```
+
+#### 3.2.1 Read sources：`readAllFileInfo()` + 選來源 disks/parts
+在 `erasureObjects.HealObject()` 前段通常會做 quick read：
+- `readAllFileInfo(ctx, er.getDisks(), bucket, object, versionID, ...)`
+
+目的：
+- 把每顆 disk 上的 `xl.meta` / fileInfo 讀回來，判斷：
+  - 哪些 disk online/offline
+  - 哪些版本/parts 存在
+  - 是否需要 heal（缺片/bitrot/metadata 不一致）
+
+你要把「Healing 在讀什麼」跟實際 I/O 對起來時，可以把 `readAllFileInfo` 當作第一個 trace 插點。
+
+#### 3.2.2 RS rebuild：`erasure.Heal(...)` 把缺片重建出來
+在 `(*erasureObjects).healObject()` 的中段，會用 `NewErasure(...)` 建好 encoder，然後呼叫：
+- `erasure.Heal(ctx, readers, writers, ...)`（或對應版本的 `Heal` 入口）
+
+概念上：
+- readers：從「仍然健康的 disks」讀出 shards
+- writers：對「缺片/壞片的 disks」寫回重建 shards（通常仍會走 bitrot writer）
+
+你在現場看到 healing 把磁碟打滿（尤其是很多小檔/metadata heavy）時，大多會在這段看到大量 read + write。
+
+#### 3.2.3 RenameData 寫回：`disk.RenameData(...)` 是最明顯的 I/O 原子切換點
+Healing 在把缺片重建到 tmp（或新 dataDir）之後，最後會對目標 disks 做 rename/commit，常見會落到：
+- `StorageAPI.RenameData(...)`（interface：`cmd/storage-interface.go`）
+- `(*xlStorage).RenameData(...)`（實作：`cmd/xl-storage.go`）
+
+這一段是你在 latency/卡住分析上最常需要的落點：
+- 如果 rename 阻塞（filesystem、IO scheduler、ext4/xfs 行為、磁碟 latency），Healing 的尾端會被拖長
+- 同時間 grid streaming mux 的 ping handler 可能也會因為排程/I/O 壓力延遲，進而與 `canceling remote connection` 這類 log 共振
+
+> 實務上：如果你要在事件中快速「把 symptom 對回 code」，我會建議你在筆記裡同時記兩條鏈：
+> 1) `MRF healRoutine → HealObject → healObject → erasure.Heal → RenameData`
+> 2) `PutObject → addPartial → MRF`（為什麼突然開始 heal）
+> 這樣你在看到 healing/grids logs 互相拉扯時，會更快收斂到底是網路問題還是資源/背景任務造成的心跳延遲。

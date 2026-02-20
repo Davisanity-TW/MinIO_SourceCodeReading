@@ -64,3 +64,4 @@
 - 2026-01-29 22:22：手動補推（排程改為 06/14/22 後，22:00 之前未生效）。PutObject/Healing trace 補充『本輪進度』與下一步 TODO。
 - 2026-01-29：新增 Trace 專區（PutObject / Healing）與側邊欄連結。
 - 2026-01-28：初始化知識庫網站骨架。
+- 2026-02-20 08:00（Asia/Taipei）：補齊 Trace PutObject/Healing：新增 healObject() 內部（readAllFileInfo → erasure.Heal → RenameData）呼叫鏈與讀碼定位；便於與 canceling remote connection 事件關聯排查。
