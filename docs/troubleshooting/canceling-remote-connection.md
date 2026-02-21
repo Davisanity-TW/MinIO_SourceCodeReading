@@ -515,4 +515,23 @@ mc admin trace --type internal --json <ALIAS> | jq -r 'select(.funcName|startswi
 - **網路方向**：trace 的 handler 幾乎沒有進來（或 error 多為連線層），但仍大量 cancel → 更像 ping/pong 本身被丟包/中間設備斷線
 - **資源方向（更常見）**：trace 顯示 handler 進來但 duration 飆高、error 少 → 更像對端忙到 handler / ping 更新 `LastPing` 來不及
 
+### 2.7.1) 把 `grid.<handler>` 反查回 source code（快速對照是哪個 module）
+`mc admin trace --type internal` 看到的 `funcName=grid.<handler>`，`<handler>` 其實是 grid 內部對 handler 的命名（通常對應某個 HandlerID / route）。
+
+在你要把「哪個 handler 在打爆 grid」落到具體程式碼時，可以用 source tree 直接反查：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# 找 handler 註冊表/映射（不同版本檔名可能略有變，但大多在 internal/grid）
+grep -RIn "type HandlerID" -n internal/grid | head
+grep -RIn "grid\." -n internal/grid | head
+
+# 用你在 trace 看到的 handler 字串反查
+# 例：funcName=grid.storage.ReadFile 之類
+HANDLER='grid.<PASTE_FROM_TRACE>'
+grep -RIn "${HANDLER#grid.}" -n internal/grid cmd 2>/dev/null | head -n 50
+```
+
+> 小提醒：`canceling remote connection` 這條 log 沒印 subroute/handler，所以 trace 是少數能把「哪個功能在用 grid」具體化的方式。當你發現某類 handler 特別集中，再回頭對照同時間窗的 healing/scanner/rebalance，就能很快分辨是「背景任務造成資源壓力」還是「網路層掉包」。
+
 > 小提醒：如果你看到 duration 尖峰集中在 heal/scanner/mrf 時段，請把它跟 `/trace/putobject-healing` 的 MRF/HealObject call chain 一起看，通常能更快定位「是 heal I/O 把節點拖慢」還是「純網路抖動」。
