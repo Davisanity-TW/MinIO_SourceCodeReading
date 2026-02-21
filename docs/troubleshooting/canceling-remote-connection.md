@@ -109,6 +109,19 @@ grep -RIn "func (er \\*erasureObjects) healObject" -n cmd | head
 > 經驗法則：如果同一時間也看到 request latency 變長、iowait 飆高、或 healing/rebalance 在跑，通常比「純網路抖動」更常見。
 
 ### 2.6) 建議你在事件/工單裡先記下的「最小資訊」（方便快速關聯）
+
+### 2.6.1) （補）如果同時間有 Auto-heal：把 `.healing.bin` 跟 `local->remote` 關聯起來
+
+當 `canceling remote connection` 出現時，如果你也懷疑是 **auto drive healing / background healing** 把 I/O 壓滿，建議你在事件裡額外記下：
+
+- remote 節點的每顆 disk 上是否存在：`<drivePath>/.minio.sys/buckets/.healing.bin`
+- `.healing.bin` 的 `LastUpdate`（是否在同時間窗持續更新）
+- `ItemsHealed/ItemsFailed/BytesDone` 是否在短時間內快速增加
+
+原因：auto-heal（新盤/回復）會用 `.healing.bin` 當 tracker；如果它正在快速更新，而 grid 同時大量 cancel remote connection，通常代表 **磁碟 I/O + goroutine 排隊/GC** 壓力很高（ping handler 來不及更新 `LastPing`）。
+
+（對照讀碼頁：`docs/trace/healing.md` 已整理 `.healing.bin` 的 code 位置與實體路徑。）
+
 - `local->remote` 的那一對 endpoint（直接從 log 抄）：例如 `10.0.0.10:9000->10.0.0.11:9000`
 - 發生時間窗（至少 ±5 分鐘）
 - 當下是否正在跑：healing / scanner / rebalance / replication（有的話附上 job/phase）

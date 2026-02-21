@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-21 20:00：Troubleshooting：`canceling remote connection` 補上「若同時間有 auto-heal，如何用 `.healing.bin`（tracker）跟 `local->remote` 事件做關聯」的小節，讓排查更快判斷是否為 healing I/O 壓力造成 ping 延遲。
+
 - 2026-02-21 08:00：Troubleshooting：`canceling remote connection` 補上「把 trace 看到的 `grid.<handler>` 反查回 source code」的小節，方便把 internal trace handler 名稱落到具體模組/檔案。
 
 - 2026-02-20 20:00：Troubleshooting：`canceling remote connection` 新增「用 `mc admin trace --type internal` 抓出 grid handler」段落，協助把 mux cancel 對應回實際功能流量。
