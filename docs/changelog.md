@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-22 08:02：Trace：PutObject vs Healing 補上「scanner 也可能直接觸發 HealObject()」的實際落點（`cmd/data-scanner.go: (*scannerItem).applyHealing()`）與快速 grep，方便把 heal 流量來源（MRF vs scanner）拆開判讀。
+
 - 2026-02-21 20:00：Troubleshooting：`canceling remote connection` 補上「若同時間有 auto-heal，如何用 `.healing.bin`（tracker）跟 `local->remote` 事件做關聯」的小節，讓排查更快判斷是否為 healing I/O 壓力造成 ping 延遲。
 
 - 2026-02-21 08:00：Troubleshooting：`canceling remote connection` 補上「把 trace 看到的 `grid.<handler>` 反查回 source code」的小節，方便把 internal trace handler 名稱落到具體模組/檔案。

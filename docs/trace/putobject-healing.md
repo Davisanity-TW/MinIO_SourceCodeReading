@@ -155,6 +155,30 @@ PutObject 有一個很關鍵但常被忽略的路徑：**client 端看起來「�
   - 從 `m.opCh` 取出 `partialOperation`
   - 對 bucket/object 會呼叫：`healBucket(bucket, scanMode)` / `healObject(bucket, object, versionID, scanMode)`
 
+### 2.4.3（補）另一個常見 healing 來源：scanner 直接呼叫 `HealObject()`
+除了 MRF 會把「缺片」丟進背景補洞之外，MinIO 的 **data scanner** 也可能在掃描時直接觸發 `HealObject()`。
+
+在你目前的 workspace source tree（`/home/ubuntu/clawd/minio`）裡，最直的落點是：
+- 檔案：`cmd/data-scanner.go`
+- method：`func (i *scannerItem) applyHealing(ctx context.Context, o ObjectLayer, oi ObjectInfo) (size int64)`
+
+典型程式碼語意（摘出關鍵行為，方便你 grep/對照）：
+- 依掃描條件決定 scan mode：
+  - 預設 `madmin.HealNormalScan`
+  - 若要檢 bitrot → `madmin.HealDeepScan`
+- 組 `madmin.HealOpts{ Remove: healDeleteDangling, ScanMode: scanMode }`
+- 直接呼叫：`o.HealObject(ctx, i.bucket, i.objectPath(), oi.VersionID, healOpts)`
+
+快速定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "applyHealing" -n cmd/data-scanner.go
+grep -RIn "HealObject(ctx" -n cmd/data-scanner.go | head
+```
+
+> 實務判讀：如果你看到「不是新盤事件、也不是 PutObject 剛寫入」但 healing 仍持續出現，scanner 這條線常常是來源之一；它也會跟 I/O 壓力、以及 `canceling remote connection` 這類 grid log 共振。
+
 ### 2.4.2 MRF 補洞的「完整 call chain」（精準到檔案/receiver）
 把 `mrf.go` 裡的 `healObject(...)` 往下追，你可以把「背景補洞」跟 `HealObject()` 的正式 healing 路徑接起來：
 
