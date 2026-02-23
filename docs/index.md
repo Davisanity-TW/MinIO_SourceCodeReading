@@ -9,4 +9,7 @@
 ## 導覽
 - [讀碼計畫](/reading-plan)
 - [系統總覽](/architecture/overview)
+- [Trace/流程筆記](/trace/putobject)
+- [Troubleshooting](/troubleshooting/canceling-remote-connection)
+  - [Storage resources are insufficient for the read operation（InsufficientReadQuorum）](/troubleshooting/storage-resources-insufficient-read-operation)
 - [更新日誌](/changelog)

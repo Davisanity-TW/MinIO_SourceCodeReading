@@ -1,5 +1,8 @@
 # 更新日誌
 
+## 2026-02-23
+- 新增 troubleshooting：`Storage resources are insufficient for the read operation`（InsufficientReadQuorum）——說明 read quorum / metadata 不一致的語意，以及為什麼在 K8s 重啟 pod 常會暫時緩解。
+
 - 2026-02-23 08:02：Trace/Troubleshooting：補齊 PutObject 在 `commitRenameDataDir()` 後如何偵測 offline disks 並觸發 `addPartial()` → MRF queue（含 *versions disparity* 分支），方便把「寫入達 quorum 但有洞」跟後續 healing/MRF、以及 `canceling remote connection` 的共振關聯起來。
 
 - 2026-02-22 08:02：Trace：PutObject vs Healing 補上「scanner 也可能直接觸發 HealObject()」的實際落點（`cmd/data-scanner.go: (*scannerItem).applyHealing()`）與快速 grep，方便把 heal 流量來源（MRF vs scanner）拆開判讀。
