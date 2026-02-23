@@ -43,6 +43,17 @@ if last > lastPingThreshold {
 > 備註：這些 interval/threshold 目前是 code 常數（不是 config 參數）。因此看到 `~60s not seen` 更應該把它當作「網路/資源讓心跳停掉」的症狀，而不是先想調參。
 
 ### 1.0.1（補）同時間窗若你也看到 Healing/MRF 很忙：先用行號把修復路徑定位起來
+
+另外一個很常見的「同時間窗證據」是：PutObject 在完成 `renameData()` + `commitRenameDataDir()` 之後，若偵測到任何 disk offline，會呼叫 `er.addPartial(...)` 把補洞工作丟進 MRF queue（背景會再走 `HealObject()`）。
+
+所以你如果看到：
+- `canceling remote connection ... not seen for ~60s`
+- 同時間 PutObject 還在持續進來
+- 以及 healing/scanner/MRF 有明顯負載
+
+那很常就是：**寫入達 quorum 但有洞 → MRF/Healing 補洞 → I/O 壓力上升 → grid ping/pong handler 延遲**。
+
+（讀碼對照：`cmd/erasure-object.go: erasureObjects.putObject()` 內 `commitRenameDataDir()` 後段會檢查 `onlineDisks[i].IsOnline()`，不在線就 `addPartial()`。）
 這個 grid log 本身不會說「上層是哪個功能在用這條 streaming mux」，但在現場最常見的共振來源是：**Healing / scanner / rebalance / MRF 補洞把 I/O/排程壓力拉高**，導致 ping handler 更新 `LastPing` 來不及。
 
 以本 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）當下 checkout 直接 grep 到的入口位置（行號會隨版本漂移）：
