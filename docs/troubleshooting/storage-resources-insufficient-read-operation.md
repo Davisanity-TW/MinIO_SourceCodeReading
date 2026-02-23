@@ -186,7 +186,40 @@ if maxCount < quorum {
 
 ---
 
-## 6) 建議的「永久修復」方向（比一直重啟更重要）
+## 6) 你貼的 replication log：為什麼會出現在「unable to replicate」？
+
+你看到的 log：
+
+```
+unable to replicate to target http://storage-fz6.s3.fab.tsmc.com:9000 for mep-iqm/FAB18/MetaRecord/QC.csv(<version>):
+Storage resources are insufficient for the read operation mep-iqm/FAB18/MetaRecord/QC.csv (*fmt.wrapError)
+```
+
+這段訊息在 source code 裡出現在：`cmd/bucket-replication.go`。
+
+在 replication worker 裡，它會先用本地的 `objectAPI.GetObjectNInfo(...)` 取得要複製的 object reader：
+
+```go
+gr, err := objectAPI.GetObjectNInfo(... ObjectOptions{ReplicationRequest: true, VersionID: ri.VersionID, ...})
+if err != nil {
+    replLogIf(ctx, fmt.Errorf("unable to replicate to target %s for %s/%s(%s): %w", tgt.EndpointURL(), bucket, object, objInfo.VersionID, err))
+    return
+}
+```
+
+所以你看到的「unable to replicate」其實是在說：
+- **replication 在「讀本地 object」這一步就失敗了**（還沒開始把資料 PUT 到 target）
+- 根因是本地讀取時 hit 到 `InsufficientReadQuorum`（read quorum 不成立/metadata 不一致）
+
+換句話說，這種 replication log 的診斷方向，應該先回到「本地叢集為什麼讀不到 quorum」：
+- disk I/O / timeout
+- inter-node RPC / grid cancel
+- healing/scanner/rebalance 壓力
+- 或特定 node/pod 資源耗盡
+
+---
+
+## 7) 建議的「永久修復」方向（比一直重啟更重要）
 
 如果你已確認「重啟 pod 就會好」，我會建議優先做：
 

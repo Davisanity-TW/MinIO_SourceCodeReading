@@ -1,7 +1,8 @@
 # 更新日誌
 
 ## 2026-02-23
-- 新增 troubleshooting：`Storage resources are insufficient for the read operation`（InsufficientReadQuorum）——說明 read quorum / metadata 不一致的語意，以及為什麼在 K8s 重啟 pod 常會暫時緩解。
+- 新增 troubleshooting：`Storage resources are insufficient for the read operation`（InsufficientReadQuorum）——說明 read quorum / metadata 不一致的語意，以及為什麼在 K8s 重啟 pod 常會暫時緩解；並補充 replication log 為何會包到此錯誤。
+- 新增 troubleshooting：`Storage resources are insufficient for the write operation`（InsufficientWriteQuorum）——說明 write quorum 失敗與「read quorum 不穩導致保守拒絕寫入/刪除」的常見情境。
 
 - 2026-02-23 08:02：Trace/Troubleshooting：補齊 PutObject 在 `commitRenameDataDir()` 後如何偵測 offline disks 並觸發 `addPartial()` → MRF queue（含 *versions disparity* 分支），方便把「寫入達 quorum 但有洞」跟後續 healing/MRF、以及 `canceling remote connection` 的共振關聯起來。
 

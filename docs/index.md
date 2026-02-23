@@ -12,4 +12,5 @@
 - [Trace/流程筆記](/trace/putobject)
 - [Troubleshooting](/troubleshooting/canceling-remote-connection)
   - [Storage resources are insufficient for the read operation（InsufficientReadQuorum）](/troubleshooting/storage-resources-insufficient-read-operation)
+  - [Storage resources are insufficient for the write operation（InsufficientWriteQuorum）](/troubleshooting/storage-resources-insufficient-write-operation)
 - [更新日誌](/changelog)
