@@ -1,5 +1,8 @@
 # 更新日誌
 
+## 2026-02-24
+- Trace/Healing：補上 `healErasureSet()` 的精準函式簽名與快速 grep；Troubleshooting：`canceling remote connection` 補一段用 remote endpoint 對齊 internal trace 的 SOP。
+
 ## 2026-02-23
 - 新增 troubleshooting：`Storage resources are insufficient for the read operation`（InsufficientReadQuorum）——說明 read quorum / metadata 不一致的語意，以及為什麼在 K8s 重啟 pod 常會暫時緩解；並補充 replication log 為何會包到此錯誤。
 - 新增 troubleshooting：`Storage resources are insufficient for the write operation`（InsufficientWriteQuorum）——說明 write quorum 失敗與「read quorum 不穩導致保守拒絕寫入/刪除」的常見情境。

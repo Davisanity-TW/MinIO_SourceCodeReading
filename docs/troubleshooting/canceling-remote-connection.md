@@ -559,3 +559,32 @@ grep -RIn "${HANDLER#grid.}" -n internal/grid cmd 2>/dev/null | head -n 50
 > 小提醒：`canceling remote connection` 這條 log 沒印 subroute/handler，所以 trace 是少數能把「哪個功能在用 grid」具體化的方式。當你發現某類 handler 特別集中，再回頭對照同時間窗的 healing/scanner/rebalance，就能很快分辨是「背景任務造成資源壓力」還是「網路層掉包」。
 
 > 小提醒：如果你看到 duration 尖峰集中在 heal/scanner/mrf 時段，請把它跟 `/trace/putobject-healing` 的 MRF/HealObject call chain 一起看，通常能更快定位「是 heal I/O 把節點拖慢」還是「純網路抖動」。
+
+---
+
+## 2.10) （補）用「remote endpoint」把 internal trace 與 log 事件對齊（更省時間）
+
+你在 log 看到的是 `localIP:9000->remoteIP:9000`，但 `mc admin trace` 的輸出通常是 `nodeName`（節點名）而不是 IP。
+
+因此我實務上會用兩步法，盡量把它變成「可被 copy/paste 的 SOP」：
+
+### Step 1：先把 `local->remote` 事件固定成一條 key
+在 incident note 先抄這三個欄位（後面所有 grep/trace 都用同一組）：
+- `local endpoint`：`<localIP:9000>`
+- `remote endpoint`：`<remoteIP:9000>`
+- `time window`：`T±5m`
+
+### Step 2：抓 internal trace，找「哪類 grid handler」在同一時間窗暴衝/變慢
+在任一節點跑（只抓 60~120 秒就很有價值；時間太長會噴爆）：
+```bash
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|startswith("grid."))
+           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
+```
+
+判讀技巧：
+- 若同時間窗 **`grid.*` 事件量很少**，但仍大量 `canceling remote connection`：偏向「網路/中間設備/封包丟失」，internal handler 根本沒進來。
+- 若同時間窗 **某些 `grid.*` handler 事件量大 + `duration` 拉長**：偏向「對端忙/I/O 或 GC 壓力」，handler 進來了但跑很慢，連 ping 更新也被拖。
+
+> 若你能從 trace 找出「最熱的 grid handler 名稱」，再回頭用 source tree 搜 handler 註冊/route（`internal/grid`）通常就能把它落到具體模組（storage/peer/lock/heal/scanner）而不是只停在「grid 斷線」。
+

@@ -493,3 +493,25 @@ grep -RIn "func (er \\*erasureObjects) healObject" cmd/*.go
 ```
 
 > 用意：當你看到「background/auto-heal 在跑」但不確定到底修了什麼，先用這些入口把 receiver 釐清，再回頭對照 `readAllFileInfo` / `objectQuorumFromMeta` / `erasure.Heal` / `RenameData` 這幾個最關鍵的重建與寫回點。
+
+---
+
+## 7) （補）`healErasureSet()` 的精準函式簽名（方便你直接跳轉）
+
+前面提到新盤/回復事件會走到：
+- `cmd/background-newdisks-heal-ops.go`：`sets[setIdx].healErasureSet(ctx, buckets, tracker)`
+
+在目前 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）裡，對應的 receiver 與函式簽名是：
+- 檔案：`cmd/global-heal.go`
+- 函式：
+  - `func (er *erasureObjects) healErasureSet(ctx context.Context, buckets []string, tracker *healingTracker) error`
+
+快速定位（避免版本差異拆檔）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func (er \\*erasureObjects) healErasureSet" -n cmd | head
+```
+
+這段的讀碼價值：你要理解「一顆 disk healing」到底在做什麼時，`healFreshDisk()` 主要是 **鎖/狀態/tracker/挑 pool&set**；真正的 **bucket heal + object 掃描 + 丟 heal worker** 大多集中在 `(*erasureObjects).healErasureSet()` 裡。
+
