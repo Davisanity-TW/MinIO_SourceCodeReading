@@ -1,5 +1,7 @@
 # 更新日誌
 
+- 2026-02-25 08:00：Trace/PutObject：補齊 multi-pool 的實際 code 路徑（checkPutObjectArgs/encodeDirObject/NSLock/getPoolIdxNoLock）並補上 sets→objects→renameData/commitRenameDataDir/addPartial 的精準落點；Troubleshooting：`canceling remote connection` 新增一組「最小指令集」協助快速判斷網路 vs I/O/排程壓力。
+
 ## 2026-02-24
 - Trace/Healing：補上 `healErasureSet()` 的精準函式簽名與快速 grep；Troubleshooting：`canceling remote connection` 補一段用 remote endpoint 對齊 internal trace 的 SOP。
 

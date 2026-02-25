@@ -173,18 +173,124 @@ grep -RIn "newObjectLayerFn" -n cmd/api-router.go
 - replication / site replication（若有）
 - 轉派到某個 set 的 `erasureObjects` 實作
 
-### 3.1 本機 source tree 對照：pool / set 選擇與 lock
-以 `/home/ubuntu/clawd/minio` 為準：
-- `cmd/erasure-server-pool.go`：`func (z *erasureServerPools) PutObject(...)`
-  - `z.NewNSLock(bucket, object)`（若 `!opts.NoLock`）
-  - `idx, err := z.getPoolIdxNoLock(ctx, bucket, object, data.Size())`（多 pool 情況下決定 pool）
-  - `return z.serverPools[idx].PutObject(...)`（把寫入導向特定 pool）
+### 3.1 本機 source tree 對照：multi-pool 決策 + NSLock（含實際函式/檔案）
+以 `/home/ubuntu/clawd/minio` 為準（以下為可直接對照的「真實 call chain」）：
 
-> 補充：`z.serverPools[idx].PutObject` 在單 pool 情境會一路落到 set/object：`erasureSets.PutObject` → `erasureObjects.PutObject`。
+- 檔案：`cmd/erasure-server-pool.go`
+- 函式：`func (z *erasureServerPools) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, opts ObjectOptions) (ObjectInfo, error)`（本機目前位置：`erasure-server-pool.go:1056`）
+
+你在這一層要抓的三個重點：
+
+1) **參數檢查與 object 正規化**
+- `checkPutObjectArgs(ctx, bucket, object)`
+- `object = encodeDirObject(object)`（把 `dir/` 類型 object 做一致化處理）
+
+2) **SinglePool fast path**（沒有 multi-pool hash/placement 的成本）
+- `if z.SinglePool() { return z.serverPools[0].PutObject(...) }`
+
+3) **multi-pool 才會做：NSLock → 選 pool → 導向 pool**
+- `ns := z.NewNSLock(bucket, object)`
+- `lkctx, err := ns.GetLock(ctx, globalOperationTimeout)` → `defer ns.Unlock(lkctx)`
+- `opts.NoLock = true`（避免下層重複鎖）
+- `idx, err := z.getPoolIdxNoLock(ctx, bucket, object, data.Size())`
+- `return z.serverPools[idx].PutObject(ctx, bucket, object, data, opts)`
+
+對照（節錄）可以直接看本機檔案這段：
+```go
+func (z *erasureServerPools) PutObject(ctx context.Context, bucket string, object string, data *PutObjReader, opts ObjectOptions) (ObjectInfo, error) {
+    if err := checkPutObjectArgs(ctx, bucket, object); err != nil {
+        return ObjectInfo{}, err
+    }
+
+    object = encodeDirObject(object)
+    if z.SinglePool() {
+        return z.serverPools[0].PutObject(ctx, bucket, object, data, opts)
+    }
+
+    if !opts.NoLock {
+        ns := z.NewNSLock(bucket, object)
+        lkctx, err := ns.GetLock(ctx, globalOperationTimeout)
+        if err != nil {
+            return ObjectInfo{}, err
+        }
+        ctx = lkctx.Context()
+        defer ns.Unlock(lkctx)
+        opts.NoLock = true
+    }
+
+    idx, err := z.getPoolIdxNoLock(ctx, bucket, object, data.Size())
+    if err != nil {
+        return ObjectInfo{}, err
+    }
+
+    return z.serverPools[idx].PutObject(ctx, bucket, object, data, opts)
+}
+```
+
+> 補充：接下來會一路落到 set/object：`erasureSets.PutObject` → `erasureObjects.PutObject`（下一節把這段補齊）。
 
 ---
 
 ## 4. `erasureObjects`：拆 data/parity 並寫入
+
+### 4.1（補）erasureSets → erasureObjects：真正落到 set 的位置（含實際函式/檔案）
+
+在 pool 選定後，會進入 `erasureSets` 依 object hash 選 set，再把 PutObject 導向該 set 的 `erasureObjects`：
+
+- `cmd/erasure-sets.go`
+  - `func (s *erasureSets) PutObject(...)`（本機目前位置：`erasure-sets.go:766`）
+  - 關鍵：`set := s.getHashedSet(object)` → `return set.PutObject(...)`
+
+```go
+func (s *erasureSets) PutObject(ctx context.Context, bucket string, object string, data *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, err error) {
+    set := s.getHashedSet(object)
+    return set.PutObject(ctx, bucket, object, data, opts)
+}
+```
+
+- `cmd/erasure-object.go`
+  - `func (er erasureObjects) PutObject(...)` → `return er.putObject(...)`
+
+```go
+func (er erasureObjects) PutObject(ctx context.Context, bucket string, object string, data *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, err error) {
+    return er.putObject(ctx, bucket, object, data, opts)
+}
+```
+
+### 4.2（補）erasureObjects.putObject：tmp → renameData → commitRenameDataDir（PutObject 的「可見性切換點」）
+
+在 `cmd/erasure-object.go: erasureObjects.putObject()` 寫完 `.minio.sys/tmp` 的 shards 並更新 `xl.meta` 後，會進入最關鍵的「把 tmp 變成正式物件」流程：
+
+1) `renameData(...)`
+- 呼叫點（本機目前位置）：`cmd/erasure-object.go:1526`
+- 語意：把 `minioMetaTmpBucket`（`.minio.sys/tmp`）下的暫存資料 rename 到真正的 `<bucket>/<object>` 路徑（並處理 DataDir/version）
+
+2) `commitRenameDataDir(...)`
+- 呼叫：`er.commitRenameDataDir(ctx, bucket, object, oldDataDir, onlineDisks)`
+- 語意：完成 DataDir 切換/commit，讓新版本對外可見（可視為 PutObject 的「原子切換點」之一）
+
+對照（節錄）：
+```go
+// Rename the successfully written temporary object to final location.
+onlineDisks, versions, oldDataDir, err := renameData(ctx, onlineDisks, minioMetaTmpBucket, tempObj, partsMetadata, bucket, object, writeQuorum)
+if err != nil {
+    ...
+}
+
+if err = er.commitRenameDataDir(ctx, bucket, object, oldDataDir, onlineDisks); err != nil {
+    return ObjectInfo{}, toObjectErr(err, bucket, object)
+}
+```
+
+3) **如果有 disk offline：PutObject 會把「補洞」丟到 MRF queue**
+
+PutObject 成功 commit 後，如果偵測到任何 disk offline（或中途變 offline），會把該 object/version 記為 partial，交給後台的 MRF/healing 來補：
+- `er.addPartial(bucket, object, fi.VersionID)`（`cmd/erasure-object.go`，就在 commit 後的 loop 內）
+
+這個行為是很多現場現象的關鍵：
+- client 看到 PutObject 成功（達 write quorum）
+- 但 cluster 後台會開始 heal/mrf 補洞
+- 若 I/O/CPU/GC 壓力大，可能連帶造成 inter-node grid 心跳延遲（參見 troubleshooting：`canceling remote connection`）
 
 核心概念：
 - object data → chunking → erasure coding（k data + m parity）
