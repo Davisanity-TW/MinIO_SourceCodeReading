@@ -104,6 +104,7 @@ PutObject 在 encode 寫完 `.minio.sys/tmp` 後，通常會進入兩段「把 t
 
 1) **rename tmp data → bucket/object data**：`renameData(...)`
 - 你可以 grep：`func renameData(`
+- 精準位置（本 workspace `/home/ubuntu/clawd/minio`）：`cmd/erasure-object.go:1015`
 - 典型呼叫：
   - `onlineDisks, versions, oldDataDir, err := renameData(ctx, onlineDisks, minioMetaTmpBucket, tempObj, partsMetadata, bucket, object, writeQuorum)`
 - 直覺語意：
@@ -112,6 +113,8 @@ PutObject 在 encode 寫完 `.minio.sys/tmp` 後，通常會進入兩段「把 t
 
 2) **commit（切換 DataDir / 讓新版本對外可見）**：`commitRenameDataDir(...)`
 - method：`func (er erasureObjects) commitRenameDataDir(...)`
+- 精準位置（本 workspace `/home/ubuntu/clawd/minio`）：`cmd/erasure-object.go:1785`
+- 呼叫點（同檔案）：`cmd/erasure-object.go:1539`
 - 呼叫：`er.commitRenameDataDir(ctx, bucket, object, oldDataDir, onlineDisks)`
 
 3) **落到 storage 層 rename（PutObject 的「原子切換點」）**

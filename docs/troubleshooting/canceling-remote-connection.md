@@ -12,6 +12,19 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 
 因此排查時請先把「哪一對 node」固定下來（local/remote），再去對照同時間窗 remote 的 I/O/CPU/GC/healing/rebalance/scanner 狀態。
 
+## 0.6) （補）先用一條命令把「誰跟誰斷」統計出來（縮小範圍）
+如果你是用 systemd/journald 跑 MinIO（或有集中式 log），建議先把同一時間窗內最常出現的 `local->remote` 組合抓出來：
+
+```bash
+# 範例：抓最近 30 分鐘內的 canceling remote connection，依 endpoint 統計
+journalctl -u minio -S "30 min ago" \
+  | grep -F "canceling remote connection" \
+  | sed -n 's/.*canceling remote connection \([^ ]*\) .*/\1/p' \
+  | sort | uniq -c | sort -nr | head
+```
+
+目的：先確認是不是「固定某一台 remote」反覆出事（偏資源/I/O），還是「remote 漂移」更像網路/CNI/中間設備問題。
+
 ---
 
 ## 1) 這個錯誤在哪裡出現？（Source code）
