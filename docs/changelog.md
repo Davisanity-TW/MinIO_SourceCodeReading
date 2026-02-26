@@ -1,5 +1,6 @@
 # 更新日誌
 
+- 2026-02-26 20:00：Troubleshooting：`canceling remote connection` 補上 ping/pong 的完整 call chain（muxclient→connection writeLoop→server handlePing→muxServer.LastPing→checkRemoteAlive），方便在 source code 上快速對齊「為何 ~60s 沒更新」。
 - 2026-02-26 08:00：Troubleshooting：`canceling remote connection` 新增「事件筆記模板」（時間窗/local->remote/背景任務/I/O or retrans 指標），讓排查紀錄更容易對齊 log/trace/metrics。
 - 2026-02-25 20:00：Trace/PutObject vs Healing：補上 `renameData()`/`commitRenameDataDir()` 在本機 source tree 的精準行號（erasure-object.go:1015/1539/1785）；Troubleshooting：`canceling remote connection` 補一條 journalctl 統計 `local->remote` 事件的命令，先縮小問題節點組合。
 - 2026-02-25 08:00：Trace/PutObject：補齊 multi-pool 的實際 code 路徑（checkPutObjectArgs/encodeDirObject/NSLock/getPoolIdxNoLock）並補上 sets→objects→renameData/commitRenameDataDir/addPartial 的精準落點；Troubleshooting：`canceling remote connection` 新增一組「最小指令集」協助快速判斷網路 vs I/O/排程壓力。

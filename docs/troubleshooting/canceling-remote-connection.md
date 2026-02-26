@@ -402,6 +402,62 @@ sysctl net.netfilter.nf_conntrack_count net.netfilter.nf_conntrack_max
 
 （延伸閱讀：`docs/trace/putobject-healing.md` 把 PutObject ↔ Healing 的資料流/rename 寫回對照整理在一起。）
 
+
+## 6.3 （補）把 ping/pong 的完整 call chain 釘死（方便你在 code 上對齊）
+
+你在排 `canceling remote connection` 時，真正要回答的是：
+
+- **client 端是不是按期送出 ping？**（timer tick / write loop 有沒有卡住）
+- **server 端是不是有收到並更新 `LastPing`？**（handler / mux lookup / atomic.Store 有沒有跑到）
+
+下面用 *最短可 grep 的路徑* 把 ping/pong 的 flow 串起來（以你 workspace 的 source tree：`/home/ubuntu/clawd/minio` 為準；檔名/行號可能隨版本漂移）。
+
+### A) client → server：Ping 的送出
+1) `minio/internal/grid/muxclient.go`
+- `(*muxClient).checkRemoteAlive()`（timer）
+  - 依 `clientPingInterval` 週期送 ping
+- `(*muxClient).ping()`（組 ping message / 送到 connection）
+
+2) `minio/internal/grid/connection.go`
+- `(*Connection).writeLoop()` / `(*Connection).send()`
+  - 把 `OpPing` 寫進 socket（或對應的 framed stream）
+
+> 你如果懷疑是「對端忙到連 ping 都送不出去」，通常會在這段看到 goroutine 卡在 write 或鎖（例如 write buffer 滿、或 scheduler delay）。
+
+### B) server 收到 Ping：更新 `muxServer.LastPing`
+1) `minio/internal/grid/connection.go`
+- `(*Connection).readLoop()` → `(*Connection).handleMsg()`
+  - 解析 message 後遇到 `OpPing` → 走 `handlePing()`（不同版本 function 名可能略有差）
+
+2) `minio/internal/grid/muxserver.go`
+- `(*muxServer).ping(seq uint32) pongMsg`
+  - 這裡會：`atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
+
+3) `minio/internal/grid/muxserver.go`
+- `(*muxServer).checkRemoteAlive()`（server 側的 watchdog）
+  - `time.Since(time.Unix(LastPing, 0)) > lastPingThreshold` → 印你看到的 log 並 `m.close()`
+
+### C) 快速自我驗證（現場用 grep 就能對齊）
+```bash
+cd /home/ubuntu/clawd/minio
+
+# client 端 ping tick + ping sender
+grep -RIn "checkRemoteAlive" internal/grid/muxclient.go internal/grid/muxserver.go
+grep -RIn "clientPingInterval" internal/grid
+
+# server 端 LastPing 更新點
+grep -RIn "LastPing" internal/grid/muxserver.go
+
+# message handler（OpPing/OpPong）
+grep -RIn "OpPing" internal/grid
+grep -RIn "handlePing" internal/grid || true
+
+# 這條 log 的出處
+grep -RIn "canceling remote connection" internal/grid
+```
+
+> 實務上：如果你已經從 `ss -ti` 確認 retrans 不高，但仍一直 `canceling remote connection`，很常就是 server 端「收到 ping 的 handler」或「更新 `LastPing` 的那段」被 I/O/GC/排程壓力拖到超過 threshold。
+
 ---
 
 ## 7) 對照其他 log/metric：把「這條 grid log」跟實際症狀串起來
