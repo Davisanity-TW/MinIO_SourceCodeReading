@@ -25,6 +25,18 @@ journalctl -u minio -S "30 min ago" \
 
 目的：先確認是不是「固定某一台 remote」反覆出事（偏資源/I/O），還是「remote 漂移」更像網路/CNI/中間設備問題。
 
+### 0.7) （補）事件筆記建議直接用這個模板（方便後續對齊 log/trace/metrics）
+在工單/incident note 先記下：
+- 事件時間窗：`T ± 5m`
+- `local->remote`：`A:9000->B:9000`（直接從 log 抄）
+- 是否同時有背景任務：healing / scanner / rebalance / replication（有就記 phase/job）
+- 快速系統訊號（至少其中一個）：
+  - `iostat -x 1 3`（await/%util）
+  - `ss -ti`（retrans/rto）
+  - Prometheus：`go_gc_duration_seconds` / `go_goroutines` / node disk latency
+
+> 這 4 行資訊通常就足以把方向分到「網路」或「對端忙/I/O/GC」。
+
 ---
 
 ## 1) 這個錯誤在哪裡出現？（Source code）
