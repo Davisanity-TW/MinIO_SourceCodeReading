@@ -42,23 +42,39 @@ grep -RIn "func \(s \*erasureSets\) PutObject" -n cmd/erasure-sets.go
 grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
 ```
 
-### 1.1（補）以目前 workspace source tree 的「精準位置」對照（含行號）
+### 1.1（補）以目前 workspace source tree 的「精準位置」對照（含行號/commit）
 > 下面行號是我在本 workspace（`/home/ubuntu/clawd/minio`）當下 checkout 直接 grep 出來的結果；你換 MinIO 版本/commit 後行號會飄，但函式簽名不太會變。
 
-- `cmd/object-handlers.go`：
+- workspace MinIO commit：`b413ff9fd`
+- `cmd/object-handlers.go`
   - `objectAPIHandlers.PutObjectHandler()`：`cmd/object-handlers.go:1987`
-- `cmd/erasure-server-pool.go`：
+- `cmd/erasure-server-pool.go`
   - `(*erasureServerPools).PutObject()`：`cmd/erasure-server-pool.go:1056`
-- `cmd/erasure-object.go`：
+- `cmd/erasure-object.go`
   - `erasureObjects.putObject()`：`cmd/erasure-object.go:1247`
+  - `renameData(...)`（func 定義）：`cmd/erasure-object.go:1015`
+  - `renameData(...)`（putObject 內呼叫點）：`cmd/erasure-object.go:1526`
+  - `commitRenameDataDir(...)`（呼叫點）：`cmd/erasure-object.go:1539`
+  - `commitRenameDataDir(...)`（func 定義）：`cmd/erasure-object.go:1785`
+
+- Healing 入口（同 commit）
+  - `(*erasureServerPools).HealObject(...)`：`cmd/erasure-server-pool.go:2319`
+  - `(*erasureObjects).healObject(...)`：`cmd/erasure-healing.go:242`
 
 如果要自己重抓一次（避免行號不一致）：
 ```bash
 cd /home/ubuntu/clawd/minio
 
+git rev-parse --short HEAD
+
 grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
-grep -RIn "func (z \\*erasureServerPools) PutObject" -n cmd | head
-grep -RIn "func (er erasureObjects) putObject" -n cmd | head
+grep -RIn "func (z \\*erasureServerPools) PutObject" -n cmd/erasure-server-pool.go
+
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
+grep -n "func renameData" cmd/erasure-object.go
+
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd | head
 ```
 
 ---
