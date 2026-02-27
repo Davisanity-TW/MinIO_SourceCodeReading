@@ -490,3 +490,78 @@ Healing 在把缺片重建到 tmp（或新 dataDir）之後，最後會對目標
 > 1) `MRF healRoutine → HealObject → healObject → erasure.Heal → RenameData`
 > 2) `PutObject → addPartial → MRF`（為什麼突然開始 heal）
 > 這樣你在看到 healing/grids logs 互相拉扯時，會更快收斂到底是網路問題還是資源/背景任務造成的心跳延遲。
+
+---
+
+## 7)（補）Healing 如何決定「要修哪些 disk / 哪些 parts」？（disksToHeal / partsToHeal 的讀碼定位）
+
+> 目的：你在現場看到 HealObject 在跑，最常問的其實是：
+> - 到底是哪些 disks 被判定缺片/壞片？
+> - 這次 heal 是補哪幾個 parts？
+> - 為什麼有些 disk 明明 online 但仍被列入 `disksToHeal`？
+>
+> 這段會把 `(*erasureObjects).healObject()` 裡常見的「判斷點」列成可 grep 的錨點，讓你可以快速跳到 code 對齊。
+
+以 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）為準，建議直接在 `cmd/erasure-healing.go` 內找這幾個關鍵字：
+
+### 7.1 `disksToHeal` 是怎麼長出來的？
+在 `healObject()` 前半段完成：
+- `readAllFileInfo(...)`（拿到每顆 disk 的 `FileInfo`/xl.meta）
+- `objectQuorumFromMeta(...)`（算 read quorum / 判斷是否可修）
+- `pickValidFileInfo(...)`（挑一個最可信的版本基準）
+
+接著通常會進入：
+- 比對每顆 disk 的 `FileInfo`：
+  - 是否 missing
+  - 是否 part 缺失
+  - 是否 bitrot / checksum mismatch
+  - 是否 metadata 不一致
+
+最後得到類似：
+- `disksToHeal []StorageAPI`（需要被修的那些 disk）
+- `partsToHeal []int`（需要被重建的 part 編號）
+- `disksToHealCount`（要修的 disk 數量）
+
+快速定位（不依賴 `rg`）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# 直接在 healing 主檔找關鍵變數（不同版本命名可能略有差，但多半相近）
+grep -n "disksToHeal" -n cmd/erasure-healing.go | head -n 50
+grep -n "partsToHeal" -n cmd/erasure-healing.go | head -n 50
+```
+
+### 7.2 `disksWithAllParts()`：哪些 disks 可以當作重建來源？
+即使有 disks 要被 heal，也不是所有 online disks 都能當來源；通常會先用：
+- `disksWithAllParts(...)`
+挑出「有完整 parts 且 metadata 合法」的 disks，作為 `erasure.Heal()` 的 readers。
+
+定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "disksWithAllParts" -n cmd/erasure-healing.go cmd/*.go
+```
+
+### 7.3 真正 RS 重建時：`erasure.Heal(readers, writers, ...)` 的 readers/writers 對應
+當 `partsToHeal` / `disksToHeal` 決定好後，`healObject()` 後半段會針對每個 `partNumber`：
+- 建 readers：只從「健康來源 disks」讀 `part.N`
+- 建 writers：只對「需要被修的 disks」寫 `part.N`（先寫到 `.minio.sys/tmp/<tmpID>`）
+- 呼叫 `erasure.Heal(...)` 重建
+- 最後 `disk.RenameData(...)` 寫回（原子切換點）
+
+你在現場要對齊 I/O 的話，最重要的三個 grep 錨點依序是：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "readAllFileInfo" -n cmd/erasure-healing.go | head
+grep -RIn "\\.Heal(ctx" -n cmd/erasure-healing.go cmd/*.go | head
+grep -RIn "RenameData" -n cmd/erasure-healing.go cmd/xl-storage.go | head
+```
+
+> 實務判讀：
+> - `readAllFileInfo` 很重 → 大量 `xl.meta` 讀取 + fan-out（小檔/大量版本時特別明顯）
+> - `erasure.Heal` 很重 → 讀來源 shards + 寫回 shards
+> - `RenameData` 卡住 → 常見是 filesystem/磁碟 latency、或目標 disk 本身異常
+>
+> 這三段任一段被拖慢，都可能讓 grid ping/pong handler 延遲累積，最後跟 `canceling remote connection` 共振。

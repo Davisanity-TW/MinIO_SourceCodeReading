@@ -1,3 +1,4 @@
+- 2026-02-27 08:00：Trace/PutObject vs Healing：補一段『Healing 如何決定要修哪些 disks/parts（disksToHeal/partsToHeal）』的讀碼定位與 grep 錨點，方便把 heal I/O 與 renameData/RenameData 的瓶頸對齊。
 # 更新日誌
 
 - 2026-02-26 20:00：Troubleshooting：`canceling remote connection` 補上 ping/pong 的完整 call chain（muxclient→connection writeLoop→server handlePing→muxServer.LastPing→checkRemoteAlive），方便在 source code 上快速對齊「為何 ~60s 沒更新」。
