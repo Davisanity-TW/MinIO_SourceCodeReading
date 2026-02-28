@@ -57,6 +57,27 @@ grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
   - `commitRenameDataDir(...)`（呼叫點）：`cmd/erasure-object.go:1539`
   - `commitRenameDataDir(...)`（func 定義）：`cmd/erasure-object.go:1785`
 
+### 1.2（補）multi-pool 時 PutObject 的「鎖 + 選 pool」實際落點
+PutObject 在 multi-pool（多個 erasure pools）情境，`(*erasureServerPools).PutObject()` 會先做：
+1) input 檢查：`checkPutObjectArgs(ctx, bucket, object)`
+   - 檔案：`cmd/object-api-input-checks.go`
+   - 本機 workspace commit `b413ff9fd`：`cmd/object-api-input-checks.go:161`
+2) 物件名編碼（dir object）：`object = encodeDirObject(object)`
+3) 若 `!opts.NoLock`：
+   - 先在「pool 之上」拿 **object lock**：`z.NewNSLock(bucket, object).GetLock(...)`
+   - 然後把 `opts.NoLock = true`，避免 lower-level 再重複拿鎖
+4) 選出寫入的 pool index：`z.getPoolIdxNoLock(ctx, bucket, object, data.Size())`
+5) 寫入：`z.serverPools[idx].PutObject(...)`
+
+讀碼定位（同 commit）：
+- `cmd/erasure-server-pool.go:1056`：`func (z *erasureServerPools) PutObject(...)`
+  - `checkPutObjectArgs(...)` 呼叫點：`cmd/erasure-server-pool.go:1058`
+  - `getPoolIdxNoLock(...)` 呼叫點：`cmd/erasure-server-pool.go:1082`
+
+這段很適合拿來回答兩個現場常見問題：
+- 「multi-pool 時，PutObject 是在 pool 上面拿鎖，還是到 set/object 層才拿？」（答案：pool 上面就拿）
+- 「怎麼決定寫到哪個 pool？」（答案：`getPoolIdxNoLock(...)` 依 bucket/object/size + pool 使用狀況做選擇）
+
 - Healing 入口（同 commit）
   - `(*erasureServerPools).HealObject(...)`：`cmd/erasure-server-pool.go:2319`
   - `(*erasureObjects).healObject(...)`：`cmd/erasure-healing.go:242`
