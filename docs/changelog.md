@@ -1,3 +1,4 @@
+- 2026-02-28 08:00：Trace/PutObject vs Healing：補上 `StorageAPI.RenameData` / `xlStorage.RenameData` 的精準行號（commit `b413ff9fd`），把 healing/rename 的落地點釘得更死。
 - 2026-02-27 20:00：Trace/PutObject vs Healing：補上本機 workspace commit（`b413ff9fd`）與 PutObject/renameData/HealObject/healObject 的最新行號錨點，方便在同一份 source tree 直接跳轉對照。
 - 2026-02-27 08:00：Trace/PutObject vs Healing：補一段『Healing 如何決定要修哪些 disks/parts（disksToHeal/partsToHeal）』的讀碼定位與 grep 錨點，方便把 heal I/O 與 renameData/RenameData 的瓶頸對齊。
 # 更新日誌

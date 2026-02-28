@@ -137,7 +137,9 @@ PutObject 在 encode 寫完 `.minio.sys/tmp` 後，通常會進入兩段「把 t
 PutObject 這段最終會把 `.minio.sys/tmp` 裡的 shards 以 rename 方式切換到正式路徑；你在 trace/pprof 上看到卡住時，最有用的落點通常是 storage 層的 rename。
 
 - interface：`cmd/storage-interface.go`（`StorageAPI.RenameData`）
+  - 本機 workspace commit `b413ff9fd`：`cmd/storage-interface.go:88`
 - 實作：`cmd/xl-storage.go`（`func (s *xlStorage) RenameData(...)`）
+  - 本機 workspace commit `b413ff9fd`：`cmd/xl-storage.go:2456`
 
 讀碼定位：
 ```bash
