@@ -1,3 +1,4 @@
+- 2026-03-01 08:00：Trace/PutObject vs Healing：補上 `mrfState.addPartialOp()` 的讀碼定位（cmd/mrf.go），以及 Troubleshooting：`canceling remote connection` 新增 Kubernetes（conntrack/CNI/MTU）方向的快速檢查清單。
 - 2026-02-28 20:00：Trace/PutObject vs Healing：補上 multi-pool 時 `PutObject()` 的「鎖 + 選 pool」實際落點（`checkPutObjectArgs` / `NSLock.GetLock` / `getPoolIdxNoLock`），方便把寫入落點跟 pool 層級行為對齊。
 - 2026-02-28 08:00：Trace/PutObject vs Healing：補上 `StorageAPI.RenameData` / `xlStorage.RenameData` 的精準行號（commit `b413ff9fd`），把 healing/rename 的落地點釘得更死。
 - 2026-02-27 20:00：Trace/PutObject vs Healing：補上本機 workspace commit（`b413ff9fd`）與 PutObject/renameData/HealObject/healObject 的最新行號錨點，方便在同一份 source tree 直接跳轉對照。

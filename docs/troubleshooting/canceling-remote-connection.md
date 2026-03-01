@@ -39,6 +39,24 @@ journalctl -u minio -S "30 min ago" \
 
 ---
 
+## 0.8)（補）如果你跑在 Kubernetes：優先檢查這些「會讓 60s ping 斷掉」的常見點
+
+這條 log 很常在 K8s 環境被放大，原因是多了一層 overlay/CNI/iptables/conntrack。
+
+建議在你鎖定 `local->remote` 之後，優先確認：
+- **Pod/Node 連線是否經過 NAT/conntrack**：大量連線（S3 client + internal grid）時，conntrack table 滿/衝突會造成短暫黑洞。
+  - Node 上看：`conntrack -S` / `cat /proc/sys/net/netfilter/nf_conntrack_max`
+- **CNI/overlay 健康度**：Flannel/Calico/Cilium 的 datapath 若遇到 drop 或 policy 變更，也會造成 ping/pong 停擺。
+  - 先看 CNI daemonset 的 logs（同時間窗）是否有重啟、BPF map error、iptables update 等。
+- **MTU/MSS 問題**：overlay + jumbo frame 常見「大包會碎/被丟」，導致看起來像偶發 timeout。
+  - 快速驗證：在 node 間做 `ping -M do -s <size>`（或 `tracepath`）找 path MTU。
+- **kube-proxy/iptables 規則 churn**：規則大量變更時，可能造成短瞬間 conn reset/timeout（尤其是 NodePort/ExternalTrafficPolicy 交錯）。
+
+如果你同時間也看到 healing/scanner/rebalance，請把它當成「資源壓力」的放大器：
+- healing 讀寫 I/O → node CPU softirq/IOwait 上升 → grid handler 排隊 → `LastPing` 更新延遲
+
+---
+
 ## 1) 這個錯誤在哪裡出現？（Source code）
 在你目前的 MinIO source tree（workspace：`/home/ubuntu/clawd/minio`）中，字串出現在：
 
