@@ -272,6 +272,7 @@ grep -RIn "HealObject(ctx" -n cmd/data-scanner.go | head
 1) `cmd/mrf.go`
 - `func (m *mrfState) healRoutine(z *erasureServerPools)`
   - `healObject(bucket, object, versionID, scanMode)`（內部會呼叫 object layer 的 heal）
+  - （補）在 `cmd/mrf.go` 裡的 `healObject(...)` helper，最終會呼叫：`z.HealObject(ctx, bucket, object, versionID, madmin.HealOpts{ScanMode: scanMode})`
 
 2) `cmd/erasure-server-pool.go`
 - `func (z *erasureServerPools) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`

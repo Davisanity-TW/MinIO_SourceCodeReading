@@ -79,6 +79,28 @@ if last > lastPingThreshold {
 - `lastPingThreshold = 4 * clientPingInterval`（`minio/internal/grid/muxserver.go:31`）
   - 也就是 **~60 秒沒看到 ping**，server 端就會判定 remote 不健康並取消。
 
+### 1.0)（補）把「server 端 60s 沒看到 ping」對到 client 端：ping loop 在哪裡送？
+你在排查時常會卡在一個點：
+- log 是 **server 端**印的（`checkRemoteAlive()` 看 `LastPing`）
+- 但真正要釐清的是：**remote 端到底有沒有送 ping？送了但丟包？還是送了但 server 端忙到收不到/處理不到？**
+
+建議你在同一份 source tree 直接把「ping 的送出端」也釘死（函式簽名/檔案），這樣你做 pprof/trace 或加 debug log 才知道該插哪裡：
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+# 先把 internal/grid 裡所有 ping 相關點列出來（不同版本命名可能略有差）
+grep -RIn "Ping" minio/internal/grid | head -n 80
+
+grep -RIn "clientPingInterval" minio/internal/grid | head -n 80
+
+grep -RIn "LastPing" minio/internal/grid | head -n 120
+```
+
+> 實務判讀：
+> - 如果你發現 client 端 ping goroutine 其實還在跑（而且對端也收得到），但 server 端 `LastPing` 不更新：偏向 server 端忙/排程延遲（I/O/GC/healing/rebalance）
+> - 如果 client 端 ping 本身就停了：偏向 remote 端整體掛住（CPU starvation、GC STW、process 被 OOM/kill、或網路 path 問題）
+
 補充：這條 log 出現在 `muxserver.go`，代表它是針對 **streaming mux（MuxID != 0）** 的存活檢查（而不是單純整條 Connection 的 MuxID=0 ping/pong）。因此你在現場看到它大量出現時，常常不是「所有 RPC 都斷」而是「某些 streaming/長連線類的 grid traffic 心跳跟不上」。
 - `defaultSingleRequestTimeout = time.Minute`（`minio/internal/grid/grid.go`）
   - 非 streaming 的單次 request（MuxID=0）如果 context 沒 deadline，會以這個 timeout 當預設。
