@@ -1,3 +1,4 @@
+- 2026-03-03 08:00：Trace/PutObject vs Healing：補上 `erasureObjects.PutObject()` wrapper 的精準行號（方便把 PutObject wrapper→putObject 主流程釘死）。
 - 2026-03-02 08:00：Trace/PutObject vs Healing：補上 MRF `healObject(...)` helper 最終呼叫 `z.HealObject(...)` 的讀碼定位；Troubleshooting：`canceling remote connection` 補一段把 server 端 `LastPing` 檢查對到 client 端 ping loop 的快速 grep 指令。
 - 2026-03-01 20:00：Trace/PutObject vs Healing：補上「versions disparity → 丟 MRF」分支的讀碼定位（commitRenameDataDir 後段），方便在 incident note 直接引用 grep 錨點。
 - 2026-03-01 08:00：Trace/PutObject vs Healing：補上 `mrfState.addPartialOp()` 的讀碼定位（cmd/mrf.go），以及 Troubleshooting：`canceling remote connection` 新增 Kubernetes（conntrack/CNI/MTU）方向的快速檢查清單。

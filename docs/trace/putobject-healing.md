@@ -39,6 +39,7 @@ cd /home/ubuntu/clawd/minio
 
 grep -RIn "func \(z \*erasureServerPools\) PutObject" -n cmd/erasure-server-pool.go
 grep -RIn "func \(s \*erasureSets\) PutObject" -n cmd/erasure-sets.go
+grep -RIn "func (er erasureObjects) PutObject" -n cmd/erasure-object.go
 grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
 ```
 
@@ -51,7 +52,8 @@ grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
 - `cmd/erasure-server-pool.go`
   - `(*erasureServerPools).PutObject()`：`cmd/erasure-server-pool.go:1056`
 - `cmd/erasure-object.go`
-  - `erasureObjects.putObject()`：`cmd/erasure-object.go:1247`
+  - `erasureObjects.PutObject()`（wrapper）：`cmd/erasure-object.go:1242`
+  - `erasureObjects.putObject()`（主流程）：`cmd/erasure-object.go:1247`
   - `renameData(...)`（func 定義）：`cmd/erasure-object.go:1015`
   - `renameData(...)`（putObject 內呼叫點）：`cmd/erasure-object.go:1526`
   - `commitRenameDataDir(...)`（呼叫點）：`cmd/erasure-object.go:1539`
