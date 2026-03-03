@@ -767,3 +767,38 @@ mc admin trace --type internal --json <ALIAS> \
 
 > 若你能從 trace 找出「最熱的 grid handler 名稱」，再回頭用 source tree 搜 handler 註冊/route（`internal/grid`）通常就能把它落到具體模組（storage/peer/lock/heal/scanner）而不是只停在「grid 斷線」。
 
+---
+
+## 9)（補）把「症狀 → 可能的上層模組」做一個超快對照（incident triage cheat-sheet）
+
+> 用途：當你只拿到一行 `canceling remote connection ... not seen for ~60s`，你要在 10 分鐘內先把方向定出來（網路 vs 資源/背景任務）。
+
+### 9.1 若同時間窗有這些現象：優先懷疑「資源壓力（I/O/GC/排程）」
+- healing / scanner / rebalance / replication 其中一個正在跑（或剛啟動）
+- `PutObject` latency 變差、或 background 出現大量 heal trace
+- remote 節點磁碟 `await` / `%util` 明顯飆高（`iostat -x 1 3`）
+- remote 節點 `go_gc_duration_seconds` 或 `go_goroutines` 出現尖峰（若有 metrics）
+
+下一步（最短路徑）：
+1) 在 remote 節點確認是不是 healing/scanner 在跑（log/trace/metrics）
+2) 直接把觀察點釘在最容易把 handler 卡住的 3 個 I/O 點：
+   - Healing：`readAllFileInfo(...)` / `erasure.Heal(...)` / `disk.RenameData(...)`
+   - PutObject：`erasure.Encode(...)` / `renameData(...)` / `commitRenameDataDir(...)`
+
+### 9.2 若同時間窗看到「TCP retrans/rto 明顯增加」：優先懷疑「網路/中間設備」
+- `ss -ti` 看到大量 `retrans`、或 `rto` 拉很大
+- remote 漂移、不是固定同一台
+- K8s 環境同時間有 CNI/kube-proxy/conntrack 相關告警或重啟
+
+下一步（最短路徑）：
+1) 鎖定 `local->remote`（固定那對 endpoint）
+2) 同時間窗做：MTU/conntrack/CNI logs（K8s）+ mtr/ethtool counters（裸機）
+
+### 9.3 若只發生在固定某台 remote：優先懷疑「那台的 disk/CPU/GC」
+- `local->remote` 幾乎都指向同一個 remote
+- 其他 node 互相之間很少斷
+
+下一步（最短路徑）：
+1) 在該 remote 上查：`dmesg`（I/O timeout/reset）、`iostat -x`、是否有 `.healing.bin` 更新
+2) 若是 K8s：同時間窗看 node 是否有 CPU steal、OOM、kubelet hang
+
