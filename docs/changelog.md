@@ -1,3 +1,4 @@
+- 2026-03-04 20:00：Troubleshooting：`canceling remote connection` 頁新增 TL;DR「10 分鐘內把方向定下來」的最短排查清單（retrans vs I/O/healing/K8s conntrack）。
 - 2026-03-04 08:00：Troubleshooting：`canceling remote connection` 補上 internal trace（`mc admin trace --type internal`）反查 source code 的 grep 錨點（trace.go / HandlerID / Register）。
 - 2026-03-03 20:00：Troubleshooting：`canceling remote connection` 補一份 incident triage cheat-sheet（症狀→優先方向→最短下一步）。
 - 2026-03-03 08:00：Trace/PutObject vs Healing：補上 `erasureObjects.PutObject()` wrapper 的精準行號（方便把 PutObject wrapper→putObject 主流程釘死）。

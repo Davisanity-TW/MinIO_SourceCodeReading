@@ -2,6 +2,18 @@
 
 > 這個訊息不是 S3 client 端的錯誤本體，而是 **MinIO server 內部的 inter-node RPC（grid）** 在判定「對端連線不健康」時，主動切斷遠端連線的 log。
 
+## TL;DR（10 分鐘內把方向定下來）
+
+1) **先抄下 log 裡的 `local->remote`**（誰印、誰被斷）與時間窗 `T±5m`
+2) 在 local 節點看 **TCP retrans/RTO**（`ss -ti`）
+   - retrans 明顯上升 → 優先懷疑 **網路/MTU/conntrack/中間設備 idle timeout**
+3) 在 remote 節點看 **磁碟 latency**（`iostat -x`）與是否在跑 **healing/scanner/rebalance**
+   - `await/%util` 飆高 + 背景任務很忙 → 優先懷疑 **資源壓力讓 ping handler 跑不動**
+4) 若是 K8s：同步查 **conntrack** 與 **CNI/MTU**（overlay 常把 60s 心跳問題放大）
+5) 需要把「到底哪個 internal handler 在打爆 grid」釘死時：用 `mc admin trace --type internal` 抓 `grid.*`（本頁後段有 SOP）
+
+---
+
 ## 0.5) 常見 log 長相（先把 local/remote 看懂）
 你通常會看到類似：
 ```
