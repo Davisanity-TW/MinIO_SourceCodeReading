@@ -1,3 +1,4 @@
+- 2026-03-04 08:00：Troubleshooting：`canceling remote connection` 補上 internal trace（`mc admin trace --type internal`）反查 source code 的 grep 錨點（trace.go / HandlerID / Register）。
 - 2026-03-03 20:00：Troubleshooting：`canceling remote connection` 補一份 incident triage cheat-sheet（症狀→優先方向→最短下一步）。
 - 2026-03-03 08:00：Trace/PutObject vs Healing：補上 `erasureObjects.PutObject()` wrapper 的精準行號（方便把 PutObject wrapper→putObject 主流程釘死）。
 - 2026-03-02 08:00：Trace/PutObject vs Healing：補上 MRF `healObject(...)` helper 最終呼叫 `z.HealObject(...)` 的讀碼定位；Troubleshooting：`canceling remote connection` 補一段把 server 端 `LastPing` 檢查對到 client 端 ping loop 的快速 grep 指令。

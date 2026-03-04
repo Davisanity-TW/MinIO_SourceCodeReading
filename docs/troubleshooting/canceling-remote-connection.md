@@ -696,15 +696,40 @@ grid 的 subroute 機制在：
 
 因為 `canceling remote connection ...` 只告訴你「某條 inter-node grid streaming mux 的 ping 沒跟上」，**不會告訴你上層是哪個功能在跑**。
 
-在 MinIO 內部，grid 的 request/response 也會走 **internal trace**（`internal/grid/trace.go` 會把 handler 名稱組成 `grid.<HandlerID>` 送到 trace stream）。
+在 MinIO 內部，grid 的 request/response 也會走 **internal trace**：
+- 位置：`minio/internal/grid/trace.go`
+- 典型行為：把 handler 名稱組成 `grid.<HandlerID>`（或相近格式）送到 trace stream，讓 `mc admin trace --type internal` 能看到。
 
 你可以用這個方法把「同一時間窗到底是哪類 handler 在狂打」抓出來：
 
 1) 在任一節點跑 trace（建議加時間窗、避免噴太多）：
 ```bash
 # 觀察 60~120 秒就很有價值
-mc admin trace --type internal --json <ALIAS> | jq -r 'select(.funcName|startswith("grid.")) | [.time,.nodeName,.funcName,.path,.error] | @tsv'
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|startswith("grid."))
+           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
 ```
+
+2) 把 trace 的 `grid.<handler>` 對回 source code 的「註冊表/路由」
+
+不同版本命名可能略不同，但大方向是：
+- handler 會在 `minio/internal/grid` 下被註冊（通常有 handler 列表/對照表）
+- `trace` 會把 handler id/name 放進事件
+
+你可以用這幾個 grep 錨點，先把 mapping 找出來：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# trace 的格式/欄位來源
+grep -RIn "type Trace" internal/grid/trace.go internal/grid/*.go | head -n 80
+grep -RIn "funcName" internal/grid/trace.go internal/grid/*.go | head -n 80
+
+# handler 註冊表/ID（不同版本檔名不同，先用關鍵字抓）
+grep -RIn "type HandlerID" internal/grid | head -n 80
+grep -RIn "Register" internal/grid | head -n 80
+```
+
+> 用意：你不一定要一次就精準定位到哪個 goroutine 卡住；只要能先回答「同時間窗最熱的是哪一類 grid handler（storage/peer/lock/heal/scanner）」通常就夠把排查方向收斂到正確模組。
 
 2) 對照 `canceling remote connection local->remote` 的那一對 endpoint：
 - trace 事件的 `nodeName` 是 remote（對端）
