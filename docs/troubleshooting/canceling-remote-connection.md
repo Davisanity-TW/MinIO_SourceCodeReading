@@ -14,6 +14,15 @@
 
 ---
 
+## 補充：我在現場最常怎麼遇到它（把「錯誤訊息」變成可行動的線索）
+
+這條 log 常見會跟下列訊息/現象一起出現（不一定每次都有，但很值得一起記在事件筆記裡）：
+- `not seen for 1m...` 的時間幾乎固定落在 ~60s（= `4 * clientPingInterval`），代表是 **grid streaming mux 的 watchdog** 觸發，而不是 TCP 立刻斷線。
+- 同時間 PutObject latency 變長、或 background 看到 healing/scanner/MRF 很忙（I/O/GC/排程壓力上來，ping handler 來不及更新 `LastPing`）。
+- 或在 K8s/overlay 環境，偶發搭配 TCP retrans/RTO 上升（conntrack/MTU/中間設備 idle timeout）。
+
+事件記錄建議多抄一行：把完整訊息中 `local->remote` 與 `not seen for ...` 的 duration 原樣貼上，後面做對照會快很多。
+
 ## 0.5) 常見 log 長相（先把 local/remote 看懂）
 你通常會看到類似：
 ```
