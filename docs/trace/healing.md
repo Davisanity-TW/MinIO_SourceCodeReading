@@ -254,6 +254,60 @@ if v := globalHealConfig.GetWorkers(); v > 0 { numHealers = uint64(v) }
   - 會 `pickValidFileInfo(...)` 選出 latest 的 `xl.meta`（modtime/etag/quorum）。
   - 會 `disksWithAllParts(...)` / `NewErasure(...)` 決定可重建來源與建立 RS encoder。
 
+## 3.4 `healObject()` 內部：Reed-Solomon 重建怎麼做、重建後寫到哪裡？（`erasure.Heal()` → `.minio.sys/tmp` → `RenameData()`）
+
+> 這一段是現場排查「healing 把 I/O 打爆」「為什麼看到 `.minio.sys/tmp` 有大量寫入」「heal 卡在 rename」時，最有用的 call chain。
+
+以本機 workspace MinIO source（`/home/ubuntu/clawd/minio`，commit `b413ff9fd`）為準：
+- 檔案：`cmd/erasure-healing.go`
+- function：`func (er *erasureObjects) healObject(...)`（約 `:242`）
+
+### 3.4.1 重建來源（readers）：`newBitrotReader()` 讀 `<bucket>/<object>/<srcDataDir>/part.N`
+在 `healObject()` 內部，MinIO 會先挑出「可用作來源」的 disks（`latestDisks`），再對每個 part 建立 `readers[]`：
+- `partPath := pathJoin(object, srcDataDir, fmt.Sprintf("part.%d", partNumber))`
+- `readers[i] = newBitrotReader(disk, ... , bucket, partPath, ... )`
+
+直覺語意：
+- **從既有的 data/parity shards 讀出來**，做 RS reconstruct
+- Deep scan（bitrot）時會更嚴格驗證 checksum
+
+### 3.4.2 重建寫入（writers）：先寫到 `.minio.sys/tmp/<tmpID>/<dstDataDir>/part.N`
+對需要被修復的 disks（`outDatedDisks`），會建立 `writers[]`，把重建出的 shards 先寫到 **tmp**：
+- `tmpID := mustGetUUID()`
+- `partPath := pathJoin(tmpID, dstDataDir, fmt.Sprintf("part.%d", partNumber))`
+- `writers[i] = newBitrotWriter(disk, bucket, minioMetaTmpBucket, partPath, ...)`
+
+也就是：
+- tmp bucket：`minioMetaTmpBucket`（`.minio.sys/tmp`）
+- tmp path：`.minio.sys/tmp/<tmpID>/<dstDataDir>/part.N`
+
+### 3.4.3 真正 RS 重建：`erasure.Heal(ctx, writers, readers, partSize, prefer)`
+每個 part 會呼叫一次：
+- `err = erasure.Heal(ctx, writers, readers, partSize, prefer)`
+
+這一步會：
+- 從 `readers[]` 取足夠 shards（data + parity）
+- reconstruct 缺片
+- 把缺片寫到 `writers[]`（也就是 `.minio.sys/tmp/...`）
+
+### 3.4.4 最後把 tmp rename 到正式路徑：`disk.RenameData(ctx, minioMetaTmpBucket, tmpID, ... , bucket, object, ...)`
+當所有 parts 都 reconstruct 完（或能 reconstruct 的都做完）後，`healObject()` 會對每顆被修復的 disk 做一次 rename commit：
+
+```go
+if _, err = disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bucket, object, RenameOptions{}); err != nil {
+    return result, err
+}
+```
+
+對照（索引）：
+- interface：`cmd/storage-interface.go` → `StorageAPI.RenameData(...)`
+- 實作：`cmd/xl-storage.go` → `func (s *xlStorage) RenameData(...)`
+
+> 實務判讀：
+> - 如果 heal 卡在「重建」：你通常會看到讀（readers）很重、CPU 也會有 RS reconstruct 成本
+> - 如果 heal 卡在「rename」：更像是 storage 層的 rename/metadata 操作卡住（I/O latency、inode/dir lock、或底層磁碟/檔案系統問題）
+> - 如果你看到 `.minio.sys/tmp` 暴增：代表 healing/putObject 都在走「先寫 tmp 再 rename」的安全提交模型
+
 ### 4.1 `healObject()` 內部「兩段 readAllFileInfo」的用意（實戰觀察點）
 同一個 object heal，通常會看到 **至少一次** `readAllFileInfo(...)`，而在 `!opts.NoLock` 時會在拿到 namespace lock 後再讀一次：
 
