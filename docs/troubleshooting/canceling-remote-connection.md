@@ -852,3 +852,34 @@ mc admin trace --type internal --json <ALIAS> \
 1) 在該 remote 上查：`dmesg`（I/O timeout/reset）、`iostat -x`、是否有 `.healing.bin` 更新
 2) 若是 K8s：同時間窗看 node 是否有 CPU steal、OOM、kubelet hang
 
+
+---
+
+## 10)（補）把「我看到的那條 log」變成可重現的排查單位（實戰小抄）
+
+我最近遇到（或最常被貼到工單裡）的原始訊息長得像：
+
+```
+WARNING: canceling remote connection <localIP:9000->remoteIP:9000> not seen for 1m0.xxs
+```
+
+把它變成「可行動」的最小單位，我會固定做三件事：
+
+1) **先把同時間窗的 background job 記下來（只要一句話）**
+- 例如：`healing/scanner/MRF` 是否正在跑、是否剛好有 disk offline/online 事件。
+
+2) **用 internal trace 抓 60~120 秒，確認同時間窗「最熱的 grid handler」是什麼**
+- 目的：把「grid 斷線」從抽象變成「哪個模組在狂打/變慢」。
+
+```bash
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|startswith("grid."))
+           | [.time,.nodeName,.funcName,.error,.duration] | @tsv'
+```
+
+3) **把瓶頸觀察點收斂到 I/O 三件套**（只要抓得到其中一個就很有價值）
+- `iostat -x 1 3`（await/%util）
+- `ss -ti`（retrans/rto）
+- `dmesg -T | egrep -i 'timeout|reset|I/O error'`（是否有 storage 層 reset/timeout）
+
+> 只要「同時間窗」能對上 `healing/scanner/MRF` + `await/%util` 尖峰，這條 grid log 幾乎就可以先當成 *症狀*（ping handler 來不及更新），排查重點應該回到 healing/MRF 的 I/O 與磁碟健康，而不是先鑽 grid 參數。
