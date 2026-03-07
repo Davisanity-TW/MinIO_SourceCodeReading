@@ -16,6 +16,44 @@
 
 ---
 
+## 0) 一張圖把 PutObject ↔ Healing（MRF/scanner）串起來（含檔案/函式）
+
+> 你在 incident note 最常需要的是「一句話 + 可跳轉的 code 錨點」。下面這張 cheat sheet 盡量用 *函式簽名 + 檔案* 表示，避免行號漂移。
+
+### 0.1 PutObject 主線（client 寫入）
+
+- `cmd/object-handlers.go`
+  - `objectAPIHandlers.PutObjectHandler()`
+- `cmd/erasure-server-pool.go`
+  - `(*erasureServerPools).PutObject()`（multi-pool：NSLock + 選 pool）
+- `cmd/erasure-sets.go`
+  - `(*erasureSets).PutObject()`（hash 到 set）
+- `cmd/erasure-object.go`
+  - `erasureObjects.PutObject()` → `erasureObjects.putObject()`
+  - encode：`erasure.Encode(...)`
+  - tmp→正式：`renameData(...)` → `commitRenameDataDir(...)`
+  - quorum 過但有洞：`er.addPartial(...)` → `globalMRFState.addPartialOp(...)`
+
+### 0.2 Healing 主線（背景補洞/重建）
+
+- 來源 A：MRF（PutObject 成功但缺片）
+  - `cmd/mrf.go`
+    - `(*mrfState).addPartialOp(...)`
+    - `(*mrfState).healRoutine(...)`（消費 queue）
+    - `healObject(...)` helper → `z.HealObject(...)`
+- 來源 B：scanner（背景掃描直接觸發 heal）
+  - `cmd/data-scanner.go`
+    - `(*scannerItem).applyHealing(...)` → `o.HealObject(...)`
+- 真正執行 heal（ObjectLayer）
+  - `cmd/erasure-server-pool.go` → `cmd/erasure-sets.go` → `cmd/erasure-healing.go`
+    - `(*erasureServerPools).HealObject()`
+    - `(*erasureSets).HealObject()`
+    - `erasureObjects.HealObject()` → `(*erasureObjects).healObject()`
+    - RS rebuild：`erasure.Heal(...)`
+    - 寫回切換點：`disk.RenameData(...)`（interface：`StorageAPI.RenameData` / 實作：`(*xlStorage).RenameData`）
+
+> 實務用法：看到「PutObject latency 變差 + healing 變多」時，先用上面這張圖把兩條線接起來（多半是 quorum 仍達成但留下 partial → MRF 開始補洞）。
+
 ## 1) PutObject：從 ObjectLayer 入口一路落到 erasureObjects.putObject()
 
 PutObject 在 distributed/erasure 架構下，常見的 call chain（按 receiver 層級拆）是：

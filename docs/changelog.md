@@ -1,3 +1,4 @@
+- 2026-03-07 08:00：Trace/PutObject vs Healing：新增「一張圖 cheat sheet」把 PutObject→addPartial→MRF/scanner→HealObject/healObject 的檔案/函式呼叫鏈串起來；Troubleshooting：`canceling remote connection` 補上釘死 ping send/handle 端的 grep 錨點（`send.*ping`/`handle.*ping`）。
 - 2026-03-05 08:00：Troubleshooting：`canceling remote connection` 補一段「現場常見共振線索」：把 `not seen for ~60s`、PutObject latency、healing/scanner/MRF 與 K8s overlay/retrans 的關聯整理成可直接寫進 incident note 的提示。
 - 2026-03-04 20:00：Troubleshooting：`canceling remote connection` 頁新增 TL;DR「10 分鐘內把方向定下來」的最短排查清單（retrans vs I/O/healing/K8s conntrack）。
 - 2026-03-04 08:00：Troubleshooting：`canceling remote connection` 補上 internal trace（`mc admin trace --type internal`）反查 source code 的 grep 錨點（trace.go / HandlerID / Register）。

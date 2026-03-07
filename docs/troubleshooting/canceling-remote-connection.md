@@ -116,6 +116,10 @@ grep -RIn "Ping" minio/internal/grid | head -n 80
 grep -RIn "clientPingInterval" minio/internal/grid | head -n 80
 
 grep -RIn "LastPing" minio/internal/grid | head -n 120
+
+# 進一步把「ping 送出端 / 接收端」釘到實際函式（命名在不同版本可能不同）
+grep -RIn "send.*ping" minio/internal/grid | head -n 80
+grep -RIn "handle.*ping" minio/internal/grid | head -n 80
 ```
 
 > 實務判讀：
