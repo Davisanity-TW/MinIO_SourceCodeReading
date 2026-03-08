@@ -308,6 +308,25 @@ if _, err = disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bu
 > - 如果 heal 卡在「rename」：更像是 storage 層的 rename/metadata 操作卡住（I/O latency、inode/dir lock、或底層磁碟/檔案系統問題）
 > - 如果你看到 `.minio.sys/tmp` 暴增：代表 healing/putObject 都在走「先寫 tmp 再 rename」的安全提交模型
 
+#### 3.4.4.1（補）把 Healing 的 `RenameData()` 跟 PutObject 的 `renameData()/commitRenameDataDir()` 對齊（排障很好用）
+這三個 rename/commit 點是現場排障時最值得「同時對照」的一組：
+
+- **PutObject（寫入 commit）**：`cmd/erasure-object.go`
+  - `renameData(...)`：tmp → 正式路徑（把 `.minio.sys/tmp/<tmpID>/<dataDir>/part.N` 切到 `<bucket>/<object>/<dataDir>/part.N`）
+  - `commitRenameDataDir(...)`：完成 DataDir/版本切換（讓新版本對外可見）
+- **Healing（補洞寫回 commit）**：`cmd/erasure-healing.go`
+  - `disk.RenameData(...)`：把 `.minio.sys/tmp/<tmpID>/<dstDataDir>/part.N` 切到 `<bucket>/<object>/<dstDataDir>/part.N`
+
+直覺比較：
+- PutObject 的 rename/commit 由 object layer（`erasureObjects.putObject()`）主導
+- Healing 的 rename 直接呼叫 storage 介面（`StorageAPI.RenameData()`）對每顆要修的 disk 做 commit
+
+因此你在 incident note 看到「tmp 暴增 / rename 卡住 / grid 心跳跟不上」時，很常可以先把瓶頸收斂到：
+- PutObject：`erasure.Encode()` → `renameData()` → `commitRenameDataDir()`
+- Healing：`erasure.Heal()` → `disk.RenameData()`
+
+（延伸閱讀：`docs/trace/putobject-healing.md` 把兩條線的 tmp/rename/commit 切換點串在一起。）
+
 ### 4.1 `healObject()` 內部「兩段 readAllFileInfo」的用意（實戰觀察點）
 同一個 object heal，通常會看到 **至少一次** `readAllFileInfo(...)`，而在 `!opts.NoLock` 時會在拿到 namespace lock 後再讀一次：
 

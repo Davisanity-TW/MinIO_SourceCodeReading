@@ -1,3 +1,5 @@
+- 2026-03-08 08:00：Trace/Healing：補一段把 Healing 的 `disk.RenameData()` 與 PutObject 的 `renameData()/commitRenameDataDir()` rename/commit 切換點對齊，方便排查「tmp 暴增/rename 卡住/grid 心跳」的共振來源。
+
 - 2026-03-07 20:00：Troubleshooting：`canceling remote connection` 追加「實戰小抄」：把單條 log 固定成 time window + internal trace（grid handler）+ I/O 三件套（iostat/ss/dmesg）的最小排查單位。
 
 - 2026-03-07 08:00：Trace/PutObject vs Healing：新增「一張圖 cheat sheet」把 PutObject→addPartial→MRF/scanner→HealObject/healObject 的檔案/函式呼叫鏈串起來；Troubleshooting：`canceling remote connection` 補上釘死 ping send/handle 端的 grep 錨點（`send.*ping`/`handle.*ping`）。
