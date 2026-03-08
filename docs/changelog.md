@@ -67,6 +67,8 @@
 
 - 2026-03-06 08:00（Asia/Taipei）：Trace/Healing：補上 `healObject()` 內部的「RS 重建 → 寫入 `.minio.sys/tmp` → `StorageAPI.RenameData()` 寫回」精準流程與關鍵函式索引，方便定位 heal bottleneck（重建 vs rename/storage）。
 
+- 2026-03-08 20:00：Troubleshooting：`canceling remote connection` 新增「先做 MinIO 內部自查」段落（用 `mc admin heal`/internal trace/auto-heal tracker 把背景任務與資源壓力共振先釘死），讓 incident triage 更快分流。
+
 - 2026-02-11 20:00：Trace：Healing 補上 `HealFormat/HealBucket/HealObject` 的 receiver/落地實作索引與快速 grep；Troubleshooting：`canceling remote connection` 補上「如何把 grid connection 間接對回上層功能」的實務手法（MRF/background healing/scanner/subroute）。
 
 - 2026-02-11 08:00：Trace：PutObject vs Healing 追加「addPartial → MRF healRoutine → healObject」的精準檔案/函式串接（`cmd/erasure-object.go`、`cmd/mrf.go`）；Troubleshooting：`canceling remote connection` 補上與 MRF 補洞/queue 消費端的具體對照點。

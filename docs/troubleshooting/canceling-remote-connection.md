@@ -14,6 +14,31 @@
 
 ---
 
+## （新增）先做 MinIO 內部自查：用 admin 指令確認是否「背景任務/資源壓力」共振
+
+> 目的：這條 log 90% 時候只是「~60s 心跳沒更新」的結果。先用 MinIO 自己的 admin 面板把同時間窗的背景任務釘死，往往比一開始就懷疑網路更快收斂。
+
+在同一時間窗（T±5m）建議至少做其中 1~2 個：
+
+1) **看 healing / scanner / rebalance 是否正在跑**
+- `mc admin heal <ALIAS> --json`（看是否有 active heal / 最近的 heal activity）
+- `mc admin rebalance status <ALIAS> --json`（若版本支援）
+- 若你有 Prometheus：同步看 healing/scanner 相關 metrics 是否在尖峰
+
+2) **用 internal trace 抓 60~120 秒，確認同時間窗最熱的 grid handler**
+（把「grid 斷線」落到「哪個模組在狂打/變慢」）
+```bash
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|startswith("grid."))
+           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
+```
+
+3) **確認是不是剛好有 disk offline/online / healing tracker 更新**
+- 在 remote 節點看 `.healing.bin`（若你正在做 auto drive healing）：`<drivePath>/.minio.sys/buckets/.healing.bin`
+- 或從 log/metrics 找「drive offline/online」事件（同時間窗最有參考價值）
+
+> 判讀：如果你在同時間窗看到 healing/scanner/rebalance 活躍 + I/O latency 尖峰（`iostat -x` 的 `await/%util`），那 `canceling remote connection` 幾乎可以先當成「資源壓力造成 ping handler 延遲」的側寫；下一步就該回頭把瓶頸切到 heal/scan 的 I/O 點，而不是只盯 grid。
+
 ## 補充：我在現場最常怎麼遇到它（把「錯誤訊息」變成可行動的線索）
 
 這條 log 常見會跟下列訊息/現象一起出現（不一定每次都有，但很值得一起記在事件筆記裡）：
