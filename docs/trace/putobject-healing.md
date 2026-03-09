@@ -312,7 +312,20 @@ grep -RIn "HealObject(ctx" -n cmd/data-scanner.go | head
 1) `cmd/mrf.go`
 - `func (m *mrfState) healRoutine(z *erasureServerPools)`
   - `healObject(bucket, object, versionID, scanMode)`（內部會呼叫 object layer 的 heal）
-  - （補）在 `cmd/mrf.go` 裡的 `healObject(...)` helper，最終會呼叫：`z.HealObject(ctx, bucket, object, versionID, madmin.HealOpts{ScanMode: scanMode})`
+  - （補）在 `cmd/mrf.go` 裡的 `healObject(...)` helper，最終會呼叫：
+    - `z.HealObject(ctx, bucket, object, versionID, madmin.HealOpts{ScanMode: scanMode})`
+
+  你要把這段釘死（方便 incident note 引用）可以直接用 signature grep：
+  ```bash
+  cd /home/ubuntu/clawd/minio
+
+  # mrf consumer + helper
+  grep -RIn "func (m \*mrfState) healRoutine" -n cmd/mrf.go
+  grep -RIn "func healObject" -n cmd/mrf.go
+
+  # 版本化物件：versions bytes → UUID 切片解析
+  grep -RIn "len(u\.versions)" -n cmd/mrf.go
+  ```
 
 2) `cmd/erasure-server-pool.go`
 - `func (z *erasureServerPools) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`

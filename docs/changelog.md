@@ -1,3 +1,5 @@
+- 2026-03-09 08:00：Trace/PutObject vs Healing：補上 MRF `healObject(...)` helper / versions bytes 解析的 signature grep 錨點，方便把「addPartial → MRF → HealObject」在同一個 RELEASE tag 上快速釘死。
+
 - 2026-03-08 08:00：Trace/Healing：補一段把 Healing 的 `disk.RenameData()` 與 PutObject 的 `renameData()/commitRenameDataDir()` rename/commit 切換點對齊，方便排查「tmp 暴增/rename 卡住/grid 心跳」的共振來源。
 
 - 2026-03-07 20:00：Troubleshooting：`canceling remote connection` 追加「實戰小抄」：把單條 log 固定成 time window + internal trace（grid handler）+ I/O 三件套（iostat/ss/dmesg）的最小排查單位。
