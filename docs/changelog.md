@@ -1,3 +1,5 @@
+- 2026-03-10 08:00：Trace/Healing：補上本機 workspace（`b413ff9fd`）的精準錨點（initAutoHeal / initBackgroundHealing / applyHealing / HealObject / healObject），方便在同一份 source tree 直接跳轉對照。
+
 - 2026-03-09 08:00：Trace/PutObject vs Healing：補上 MRF `healObject(...)` helper / versions bytes 解析的 signature grep 錨點，方便把「addPartial → MRF → HealObject」在同一個 RELEASE tag 上快速釘死。
 
 - 2026-03-08 08:00：Trace/Healing：補一段把 Healing 的 `disk.RenameData()` 與 PutObject 的 `renameData()/commitRenameDataDir()` rename/commit 切換點對齊，方便排查「tmp 暴增/rename 卡住/grid 心跳」的共振來源。

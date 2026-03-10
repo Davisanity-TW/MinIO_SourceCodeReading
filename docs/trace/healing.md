@@ -6,6 +6,28 @@
 > - erasure heal 的 quorum 與資料重建方式
 
 > 本頁以 **MinIO master (GitHub)** 的程式碼結構/檔名做索引；你實際線上版本（RELEASE tag）可能有差異。
+>
+> （補）若你是用這個 workspace 的 MinIO 原始碼（`/home/ubuntu/clawd/minio`），目前 HEAD：`b413ff9fd`，下面這些「精準錨點」可以直接跳：
+> - `cmd/background-newdisks-heal-ops.go:347`：`initAutoHeal()`
+> - `cmd/background-newdisks-heal-ops.go:499`：`monitorLocalDisksAndHeal()`
+> - `cmd/background-heal-ops.go:102`：`initBackgroundHealing()`
+> - `cmd/data-scanner.go:924`：`(*scannerItem).applyHealing()`
+> - `cmd/erasure-server-pool.go:2319`：`(*erasureServerPools).HealObject()`
+> - `cmd/erasure-sets.go:1176`：`(*erasureSets).HealObject()`
+> - `cmd/erasure-healing.go:242`：`(*erasureObjects).healObject()`
+>
+> 自己重抓（避免行號飄）：
+> ```bash
+> cd /home/ubuntu/clawd/minio
+> git rev-parse --short HEAD
+> grep -RIn "func initAutoHeal" -n cmd/background-newdisks-heal-ops.go
+> grep -RIn "func monitorLocalDisksAndHeal" -n cmd/background-newdisks-heal-ops.go
+> grep -RIn "func initBackgroundHealing" -n cmd/background-heal-ops.go
+> grep -RIn "func (i \*scannerItem) applyHealing" -n cmd/data-scanner.go
+> grep -RIn "func (z \*erasureServerPools) HealObject" -n cmd/erasure-server-pool.go
+> grep -RIn "func (s \*erasureSets) HealObject" -n cmd/erasure-sets.go
+> grep -RIn "func (er \*erasureObjects) healObject" -n cmd/erasure-healing.go
+> ```
 
 ---
 
