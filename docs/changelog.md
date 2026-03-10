@@ -1,3 +1,5 @@
+- 2026-03-10 20:02：Trace/Healing：補一節『MRF（Most Recently Failed）補洞也是 Healing 的常見來源』，把 PutObject addPartial→MRF healRoutine→HealObject 的呼叫鏈與 grep 錨點補齊。
+
 - 2026-03-10 08:00：Trace/Healing：補上本機 workspace（`b413ff9fd`）的精準錨點（initAutoHeal / initBackgroundHealing / applyHealing / HealObject / healObject），方便在同一份 source tree 直接跳轉對照。
 
 - 2026-03-09 08:00：Trace/PutObject vs Healing：補上 MRF `healObject(...)` helper / versions bytes 解析的 signature grep 錨點，方便把「addPartial → MRF → HealObject」在同一個 RELEASE tag 上快速釘死。

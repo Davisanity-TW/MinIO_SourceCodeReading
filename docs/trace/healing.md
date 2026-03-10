@@ -130,6 +130,46 @@ res, _ := o.HealObject(ctx, i.bucket, i.objectPath(), oi.VersionID, healOpts)
 
 ---
 
+## 1.5（補）另一條很常見的 healing 來源：MRF（Most Recently Failed）補洞
+
+> 這條線在現場非常常見：**PutObject 已經回成功（達 write quorum）**，但當下有部分 disks offline/timeout，留下缺片；MinIO 會把「需要補洞」的 object/version 丟到 MRF queue，後續由背景 routine 逐筆呼叫 `HealObject()` 補回來。
+
+呼叫鏈（以 workspace MinIO source：`/home/ubuntu/clawd/minio` 為準）：
+
+1) PutObject 產生 partial（產生者）
+- `cmd/erasure-object.go`
+  - `erasureObjects.putObject()` commit 後：`er.addPartial(bucket, object, fi.VersionID)`
+  - `addPartial()` 內：`globalMRFState.addPartialOp(partialOperation{...})`
+
+2) MRF queue 消費端（調度者）
+- `cmd/mrf.go`
+  - `func (m *mrfState) healRoutine(z *erasureServerPools)`：從 `opCh` 取出 `partialOperation`
+  - 逐筆呼叫 `healObject(...)` helper → `z.HealObject(...)`
+
+3) 真正修復（執行者）
+- `cmd/erasure-server-pool.go` → `cmd/erasure-sets.go` → `cmd/erasure-healing.go`
+  - `(*erasureServerPools).HealObject()` → `(*erasureSets).HealObject()` → `(*erasureObjects).healObject()`
+
+快速定位（避免行號飄）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# PutObject -> addPartial -> globalMRFState
+grep -RIn "addPartial(" -n cmd/erasure-object.go
+grep -RIn "globalMRFState\.addPartialOp" -n cmd/erasure-object.go cmd/*.go
+
+# MRF consumer
+grep -RIn "func (m \*mrfState) healRoutine" -n cmd/mrf.go
+
+# 最終 HealObject
+grep -RIn "func (z \*erasureServerPools) HealObject" -n cmd | head
+grep -RIn "func (er \*erasureObjects) healObject" -n cmd | head
+```
+
+> 實務判讀：如果 `canceling remote connection` 在 healing/MRF 活躍時段大量出現，常見不是網路先壞，而是 **MRF/Healing 把 I/O 與排程壓力拉高**，導致 grid ping/pong 的 handler 更新 `LastPing` 來不及。
+
+---
+
 ## 2) 單顆 disk healing 的實際工作：`healFreshDisk()`
 
 - 檔案：`cmd/background-newdisks-heal-ops.go`
