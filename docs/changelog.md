@@ -1,3 +1,5 @@
+- 2026-03-11 20:00：Troubleshooting：`canceling remote connection` 補齊 server 端收到 `OpPing` 後的精準 call chain（`Connection.handleMsg` → `Connection.handlePing` → `muxServer.ping` → `LastPing` 更新），避免不同版本/命名差異造成誤判。
+
 - 2026-03-10 20:02：Trace/Healing：補一節『MRF（Most Recently Failed）補洞也是 Healing 的常見來源』，把 PutObject addPartial→MRF healRoutine→HealObject 的呼叫鏈與 grep 錨點補齊。
 
 - 2026-03-10 08:00：Trace/Healing：補上本機 workspace（`b413ff9fd`）的精準錨點（initAutoHeal / initBackgroundHealing / applyHealing / HealObject / healObject），方便在同一份 source tree 直接跳轉對照。

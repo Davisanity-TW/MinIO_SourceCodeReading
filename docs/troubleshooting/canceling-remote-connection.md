@@ -517,11 +517,18 @@ sysctl net.netfilter.nf_conntrack_count net.netfilter.nf_conntrack_max
 ### B) server 收到 Ping：更新 `muxServer.LastPing`
 1) `minio/internal/grid/connection.go`
 - `(*Connection).readLoop()` → `(*Connection).handleMsg()`
-  - 解析 message 後遇到 `OpPing` → 走 `handlePing()`（不同版本 function 名可能略有差）
+  - 解析 message 後遇到 `OpPing` → `(*Connection).handlePing(ctx, m)`
 
-2) `minio/internal/grid/muxserver.go`
+（以本 workspace `/home/ubuntu/clawd/minio` 當下版本為準，`handleMsg()` 內的 switch 是：`case OpPing: c.handlePing(ctx, m)`）
+
+2) `minio/internal/grid/connection.go`
+- `func (c *Connection) handlePing(ctx context.Context, m message)`
+  - 若 `m.MuxID == 0`：走 `c.queueMsg(m, &pongMsg{})`（connection-level ping/pong）
+  - 若 `m.MuxID != 0`：`v, ok := c.inStream.Load(m.MuxID)`，找到 streaming mux server，然後：`pong := v.ping(m.Seq)`
+
+3) `minio/internal/grid/muxserver.go`
 - `(*muxServer).ping(seq uint32) pongMsg`
-  - 這裡會：`atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
+  - 這裡會更新：`atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
 
 3) `minio/internal/grid/muxserver.go`
 - `(*muxServer).checkRemoteAlive()`（server 側的 watchdog）
