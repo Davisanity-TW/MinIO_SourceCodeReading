@@ -4,6 +4,19 @@
 
 ## TL;DR（10 分鐘內把方向定下來）
 
+##（補）把「你遇到的那行錯誤」立刻拆成可排查欄位（最推薦的 incident note 寫法）
+把 log 原樣貼上，例如：
+```
+WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for 1m2.3s
+```
+然後在同一段事件筆記裡固定記三個欄位（後面查 log/trace/metrics 都用它）：
+- **time window**：`T ± 5m`
+- **local->remote**：`10.0.0.10:9000 -> 10.0.0.11:9000`
+- **not seen for**：`1m2.3s`（幾乎總是 ~60s，對應 `lastPingThreshold = 4*clientPingInterval`）
+
+> 目的：把「看起來很抽象的一行 log」轉成可直接下指令/抓 trace 的 key（local/remote/time window）。
+
+
 1) **先抄下 log 裡的 `local->remote`**（誰印、誰被斷）與時間窗 `T±5m`
 2) 在 local 節點看 **TCP retrans/RTO**（`ss -ti`）
    - retrans 明顯上升 → 優先懷疑 **網路/MTU/conntrack/中間設備 idle timeout**
