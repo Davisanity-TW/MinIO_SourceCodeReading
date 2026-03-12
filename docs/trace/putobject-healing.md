@@ -271,7 +271,40 @@ grep -n "func (m \*mrfState) healRoutine" -n cmd/mrf.go
 而 `addPartialOp()` 的實作在：
 - 檔案：`cmd/mrf.go`
 - method：`func (m *mrfState) addPartialOp(u partialOperation)`
-  - 典型行為：把 op 送進 channel（`m.opCh <- u`），並做一些去重/容量控制（不同版本可能稍有差異）。
+  - 典型行為：把 op 送進 channel（`m.opCh <- u`）。
+
+##### 2.4.2.1（補）`partialOperation` 結構長什麼樣？`addPartialOp()` 有沒有節流/丟棄？
+以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`，commit `b413ff9fd`）為準：
+
+- 檔案：`cmd/mrf.go`
+- struct：`type partialOperation struct { ... }`
+
+實際欄位（節錄）：
+```go
+type partialOperation struct {
+    bucket              string
+    object              string
+    versionID           string
+    versions            []byte
+    setIndex, poolIndex int
+    queued              time.Time
+    scanMode            madmin.HealScanMode
+}
+```
+
+`addPartialOp()` 的行為是 **non-blocking**，channel 滿的時候會直接 drop：
+```go
+func (m *mrfState) addPartialOp(op partialOperation) {
+    select {
+    case m.opCh <- op:
+    default:
+    }
+}
+```
+
+實務意義：
+- MRF 是「盡力而為」的背景補洞 queue；如果 opCh 壓滿，會直接丟棄新 op。
+- 因此你在 incident note 看到「PutObject 當下留下 partial，但後續沒有立刻被補洞」時，除了看 healing/scanner 是否忙，也要記得把 **MRF queue 是否可能被塞滿** 納入判讀。
 
 > 實務上你要回答「MRF 會不會把 healing 打爆」時，最關鍵是看這裡的 channel 緩衝/節流策略 + `healRoutine()` 的 dynamic sleeper。
 
