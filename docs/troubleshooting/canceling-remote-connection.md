@@ -12,6 +12,20 @@
 
 > 記得：這條 log 的語意是「server 端 ~60s 沒看到（或沒能處理到）remote 的 ping」，它通常是**結果**（網路或資源），不是根因本身。
 
+### （新增）跟 PutObject/Healing 的常見共振：partial → MRF → HealObject → I/O 壓力 → grid ping 跟不上
+如果你同一時間窗也看到：
+- PutObject 成功回應（達到 quorum），但當下有部分 disks offline
+- 接著 healing/scanner/MRF 明顯變忙（I/O 拉高）
+- 然後開始出現 `canceling remote connection ... not seen for ~60s`
+
+那常見因果鏈是：
+1) `erasureObjects.putObject()` 在 `commitRenameDataDir()` 後偵測 offline disks → `er.addPartial(...)`
+2) `globalMRFState.addPartialOp(...)` 把「待補洞」事件丟進 MRF queue
+3) `mrfState.healRoutine()` 消費 queue → `HealObject()` → `(*erasureObjects).healObject()` 真的做 RS rebuild + `RenameData()` 寫回
+4) 背景補洞把 I/O/排程壓力拉高，導致 grid streaming mux 的 `LastPing` 更新延遲 → 觸發這條 log
+
+讀碼對照頁（同 repo）：`docs/trace/putobject-healing.md`
+
 ## （補）把「你遇到的那行錯誤」立刻拆成可排查欄位（最推薦的 incident note 寫法）
 把 log 原樣貼上，例如：
 ```

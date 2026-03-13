@@ -1,3 +1,5 @@
+- 2026-03-13 22:00：Troubleshooting：`canceling remote connection` 補一段「常見共振鏈」：PutObject partial → MRF → HealObject/healObject → I/O 壓力 → grid ping 跟不上（方便 incident note 直接引用）。
+
 - 2026-03-13 14:00：Troubleshooting：補齊 `canceling remote connection` 頁的 TL;DR（10 分鐘內先分網路 retrans vs 對端 I/O/healing 壓力），並修正章節標題格式。
 
 - 2026-03-13 06:00：Troubleshooting：把 `canceling remote connection ... not seen for ...` 的「單行 log → incident note 三欄位（time window/local->remote/not-seen-for）」模板補齊，讓現場貼錯誤訊息時能更快對齊 trace/metrics。
