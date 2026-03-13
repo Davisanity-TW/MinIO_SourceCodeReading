@@ -724,3 +724,28 @@ grep -RIn "RenameData" -n cmd/erasure-healing.go cmd/xl-storage.go | head
 > - `RenameData` 卡住 → 常見是 filesystem/磁碟 latency、或目標 disk 本身異常
 >
 > 這三段任一段被拖慢，都可能讓 grid ping/pong handler 延遲累積，最後跟 `canceling remote connection` 共振。
+
+---
+
+## 8)（補）把 Healing 跟 `mc admin trace` 對齊：`healTrace()` / `madmin.TraceHealing`
+
+當你在 production 想用 `mc admin trace` 把「HealObject 到底在修什麼」抓成事件流，最直接的 source code 錨點是 `healTrace()`：
+
+- 檔案：`cmd/erasure-healing.go`
+- function：`healTrace(...)`
+- 事件類型：`madmin.TraceHealing`
+
+你可以用下面的 grep 快速把它釘死（不同版本行號會飄，但函式名通常不變）：
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+# HealObject 內部 trace 的產生點
+grep -RIn "healTrace" -n cmd/erasure-healing.go cmd/*.go | head -n 50
+
+# TraceHealing enum / 欄位定義在 madmin-go（不同版本路徑可能不同）
+grep -RIn "TraceHealing" -n . | head -n 50
+```
+
+實務判讀：
+- 若你在 `mc admin trace --type healing`（或 internal trace）看到 healing 事件量暴增、且 duration 拉長，同時間又出現 `canceling remote connection ... not seen for ...`，通常代表「修復路徑把 I/O/排程壓力拉高」而不是單純網路抖動。

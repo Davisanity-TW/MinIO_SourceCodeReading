@@ -1,3 +1,5 @@
+- 2026-03-14 06:00：Trace/PutObject vs Healing：補一節 `healTrace()` / `madmin.TraceHealing` 的讀碼錨點，方便把 `mc admin trace` 的 healing 事件對回 source。
+
 - 2026-03-13 22:00：Troubleshooting：`canceling remote connection` 補一段「常見共振鏈」：PutObject partial → MRF → HealObject/healObject → I/O 壓力 → grid ping 跟不上（方便 incident note 直接引用）。
 
 - 2026-03-13 14:00：Troubleshooting：補齊 `canceling remote connection` 頁的 TL;DR（10 分鐘內先分網路 retrans vs 對端 I/O/healing 壓力），並修正章節標題格式。
