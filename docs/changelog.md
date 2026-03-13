@@ -1,3 +1,5 @@
+- 2026-03-13 14:00：Troubleshooting：補齊 `canceling remote connection` 頁的 TL;DR（10 分鐘內先分網路 retrans vs 對端 I/O/healing 壓力），並修正章節標題格式。
+
 - 2026-03-13 06:00：Troubleshooting：把 `canceling remote connection ... not seen for ...` 的「單行 log → incident note 三欄位（time window/local->remote/not-seen-for）」模板補齊，讓現場貼錯誤訊息時能更快對齊 trace/metrics。
 
 - 2026-03-12 14:00：Trace/PutObject vs Healing：補齊 `partialOperation` 實際欄位（cmd/mrf.go）與 `addPartialOp()` non-blocking drop 行為（opCh 滿會丟棄），方便判讀「有 partial 但後續沒立刻補洞」的可能原因。

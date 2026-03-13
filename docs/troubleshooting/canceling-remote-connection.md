@@ -4,7 +4,15 @@
 
 ## TL;DR（10 分鐘內把方向定下來）
 
-##（補）把「你遇到的那行錯誤」立刻拆成可排查欄位（最推薦的 incident note 寫法）
+1) **先固定那一對節點**：把 log 裡的 `local->remote` 抄下來（誰印 log = local；被斷的是 remote）
+2) **把方向先分成兩類**（最省時間）：
+   - 看到明顯 TCP retrans/RTO（`ss -ti`）→ 優先懷疑 **網路/MTU/conntrack/中間設備 idle timeout**
+   - 同時間 remote 節點 `iostat -x` 的 `await/%util` 飆高、或 healing/scanner/rebalance/MRF 很忙 → 優先懷疑 **資源壓力讓 ping handler 跑不動**
+3) **需要落到是哪個 internal handler 在打爆 grid**：抓 60~120 秒 `mc admin trace --type internal`，先把 `grid.*` 事件的熱點列出來
+
+> 記得：這條 log 的語意是「server 端 ~60s 沒看到（或沒能處理到）remote 的 ping」，它通常是**結果**（網路或資源），不是根因本身。
+
+## （補）把「你遇到的那行錯誤」立刻拆成可排查欄位（最推薦的 incident note 寫法）
 把 log 原樣貼上，例如：
 ```
 WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for 1m2.3s
