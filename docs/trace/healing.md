@@ -170,6 +170,43 @@ grep -RIn "func (er \*erasureObjects) healObject" -n cmd | head
 
 ---
 
+## 1.6（補）MRF queue 的節流/丟棄行為：為什麼「有 partial」不代表一定會被補到
+
+在 PutObject 走到 `er.addPartial()`（或 `globalMRFState.addPartialOp(...)`）後，後續補洞是否「馬上」發生，取決於 MRF queue 是否塞滿、以及消費端的節流速度。
+
+以 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）為準：
+
+- 檔案：`cmd/mrf.go`
+- `type partialOperation struct { bucket, object, versionID string; versions []byte; queued time.Time; scanMode madmin.HealScanMode; ... }`
+- `func (m *mrfState) addPartialOp(op partialOperation)` 是 **non-blocking** 寫入 channel：
+
+```go
+func (m *mrfState) addPartialOp(op partialOperation) {
+    select {
+    case m.opCh <- op:
+    default:
+    }
+}
+```
+
+直覺語意：
+- `opCh` 如果滿了，新 op 會被 **直接丟棄**（best-effort）。
+- 所以你在現場看到「PutObject 當下有洞」但後續 healing 沒立刻追上時，除了看 I/O/CPU 壓力，也要把 **MRF queue 是否被塞爆** 納入判讀。
+
+消費端也會做節流（避免一直狂補把磁碟打爆）：
+- `cmd/mrf.go: (*mrfState).healRoutine(...)` 內會用 `newDynamicSleeper(...)` 在每次 heal 前後插入等待。
+
+快速定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "type partialOperation" -n cmd/mrf.go
+grep -RIn "func (m \*mrfState) addPartialOp" -n cmd/mrf.go
+grep -RIn "func (m \*mrfState) healRoutine" -n cmd/mrf.go
+```
+
+---
+
 ## 2) 單顆 disk healing 的實際工作：`healFreshDisk()`
 
 - 檔案：`cmd/background-newdisks-heal-ops.go`
