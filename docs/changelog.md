@@ -1,3 +1,5 @@
+- 2026-03-15 06:00：Troubleshooting：`canceling remote connection` 補一段「三件套蒐證」（ss retrans / iostat / 60–120s internal trace），讓 incident triage 更快把方向分成網路 vs 資源/背景任務。
+
 - 2026-03-14 22:00：Trace/Healing：補一節「MRF queue 的節流/丟棄行為」：`mrfState.addPartialOp()` non-blocking（opCh 滿會 drop），說明為什麼「有 partial」不代表一定會立刻被補洞。
 
 - 2026-03-14 14:00：Troubleshooting：`canceling remote connection` 新增「不用 Prometheus 也能做的 log 關聯」小節：用同時間窗在 remote 節點快速 grep healing/MRF/scanner/disk offline 關鍵字，先分流網路 vs 資源/I/O 壓力。

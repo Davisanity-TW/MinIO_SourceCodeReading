@@ -58,6 +58,30 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 
 > 目的：把「看起來很抽象的一行 log」轉成可直接下指令/抓 trace 的 key（local/remote/time window）。
 
+### （新增）最省事的「三件套」蒐證：網路 / I/O / internal trace（60–120s）
+如果你只想用最少時間先把方向定出來，我建議同一時間窗直接拿到這三個資料：
+
+1) local 節點：TCP retrans/RTO（抓是否像網路丟包）
+```bash
+ss -tiH '( sport = :9000 or dport = :9000 )' | head -n 120
+```
+
+2) remote 節點：磁碟 latency（抓是否像 I/O 壓力把 ping handler 拖慢）
+```bash
+iostat -x 1 3
+```
+
+3) 叢集任一節點：internal trace（抓同時間窗最熱的 `grid.*` handler）
+```bash
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|startswith("grid."))
+           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
+```
+
+判讀（很粗但很有效）：
+- retrans 明顯上升 → 先偏網路
+- retrans 不高，但 remote I/O 高、且 trace 顯示 `grid.*` duration 變長 → 先偏資源/背景任務
+
 
 1) **先抄下 log 裡的 `local->remote`**（誰印、誰被斷）與時間窗 `T±5m`
 2) 在 local 節點看 **TCP retrans/RTO**（`ss -ti`）
