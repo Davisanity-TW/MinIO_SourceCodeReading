@@ -26,6 +26,26 @@
 
 讀碼對照頁（同 repo）：`docs/trace/putobject-healing.md`
 
+### （新增）把 log 直接跟「Healing/MRF 是否正在忙」對齊（不靠 Prometheus 也能做）
+如果你只有節點 log（沒有 metrics/trace），仍然可以用同一時間窗做最基本的關聯：
+
+- 在 **remote 節點**（被 cancel 的那台）先抓同時間窗是否有 healing/MRF/scanner 關鍵字：
+  ```bash
+  # systemd/journald
+  journalctl -u minio -S "5 min ago" -U "5 min" \
+    | egrep -i 'heal|healing|mrf|scanner|rebalance|disk.*offline|drive.*offline' \
+    | tail -n 200
+  
+  # 若你是以 container logs 收集，等價地在你 log backend 以 remote node/pod 為條件查同樣關鍵字
+  ```
+
+- 如果同時間窗 **healing/MRF/scanner 明顯活躍**，請先把 `canceling remote connection` 視為「資源/I/O 壓力的結果」，下一步優先查 remote 的：
+  - `iostat -x`（await/%util）
+  - `dmesg`（I/O timeout/reset）
+  - 是否有 `.healing.bin` 更新（auto drive healing）
+
+- 如果同時間窗 **幾乎沒有任何背景任務線索**，但 `ss -ti` 看到 retrans/rto 上升，才更像是「網路/封包丟失/conntrack/MTU」方向。
+
 ## （補）把「你遇到的那行錯誤」立刻拆成可排查欄位（最推薦的 incident note 寫法）
 把 log 原樣貼上，例如：
 ```

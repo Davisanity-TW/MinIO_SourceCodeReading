@@ -1,3 +1,5 @@
+- 2026-03-14 14:00：Troubleshooting：`canceling remote connection` 新增「不用 Prometheus 也能做的 log 關聯」小節：用同時間窗在 remote 節點快速 grep healing/MRF/scanner/disk offline 關鍵字，先分流網路 vs 資源/I/O 壓力。
+
 - 2026-03-14 06:00：Trace/PutObject vs Healing：補一節 `healTrace()` / `madmin.TraceHealing` 的讀碼錨點，方便把 `mc admin trace` 的 healing 事件對回 source。
 
 - 2026-03-13 22:00：Troubleshooting：`canceling remote connection` 補一段「常見共振鏈」：PutObject partial → MRF → HealObject/healObject → I/O 壓力 → grid ping 跟不上（方便 incident note 直接引用）。
