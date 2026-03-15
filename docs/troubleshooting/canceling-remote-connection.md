@@ -2,6 +2,18 @@
 
 > 這個訊息不是 S3 client 端的錯誤本體，而是 **MinIO server 內部的 inter-node RPC（grid）** 在判定「對端連線不健康」時，主動切斷遠端連線的 log。
 
+## Code anchors（先把「哪裡印的 / 看的是什麼 timestamp」釘死）
+以 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）為準，這行 log 的最短關聯鏈是：
+
+- **印 log / 判定超時**：`minio/internal/grid/muxserver.go`
+  - `(*muxServer).checkRemoteAlive()`：`time.Since(time.Unix(LastPing,0)) > lastPingThreshold` → 印 `canceling remote connection ... not seen for ...` → `m.close()`
+  - `lastPingThreshold = 4 * clientPingInterval`（通常約 ~60s）
+- **LastPing 更新點（server 收到 ping 時）**：
+  - `minio/internal/grid/connection.go`：`(*Connection).handleMsg()` → `handlePing()`（case `OpPing`）
+  - `minio/internal/grid/muxserver.go`：`(*muxServer).ping()` → `atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
+
+> 判讀重點：這條 log 的語意是「server 端在 ~60s 內沒看到（或沒能處理到）remote 的 ping」；原因可能是封包沒到（網路）或 handler 跑不動（I/O/CPU/GC/背景任務）。
+
 ## TL;DR（10 分鐘內把方向定下來）
 
 1) **先固定那一對節點**：把 log 裡的 `local->remote` 抄下來（誰印 log = local；被斷的是 remote）

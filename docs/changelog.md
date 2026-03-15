@@ -1,3 +1,5 @@
+- 2026-03-15 22:00：Troubleshooting：`canceling remote connection` 頁首新增 Code anchors（`muxServer.checkRemoteAlive` / `Connection.handlePing` / `muxServer.ping`），先把「印 log 的點」與 `LastPing` 更新點釘死，方便把原因分流成網路 vs 對端忙。
+
 - 2026-03-15 14:00：Troubleshooting：`canceling remote connection` 補一段「用 `mc admin info --json` 把 log 的 remoteIP 對到 trace 的 nodeName」小節，讓你看 internal trace 時能更快鎖定是同一台節點。
 
 - 2026-03-15 06:00：Troubleshooting：`canceling remote connection` 補一段「三件套蒐證」（ss retrans / iostat / 60–120s internal trace），讓 incident triage 更快把方向分成網路 vs 資源/背景任務。
