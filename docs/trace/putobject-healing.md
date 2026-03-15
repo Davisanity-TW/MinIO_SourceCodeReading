@@ -97,6 +97,29 @@ grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
   - `commitRenameDataDir(...)`（呼叫點）：`cmd/erasure-object.go:1539`
   - `commitRenameDataDir(...)`（func 定義）：`cmd/erasure-object.go:1785`
 
+#### 1.1.1 一鍵重抓（避免行號/版本漂移）
+在你自己的 checkout（RELEASE tag / fork）想重抓同樣的錨點，建議用「函式簽名 grep」而不要寫死行號：
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+git rev-parse --short HEAD
+
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+
+grep -RIn "func (z \\*erasureServerPools) PutObject" -n cmd/erasure-server-pool.go
+
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
+
+grep -n "^func renameData" cmd/erasure-object.go
+
+grep -n "^func (er erasureObjects) commitRenameDataDir" cmd/erasure-object.go
+
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd/erasure-server-pool.go
+
+grep -n "^func (er \\*erasureObjects) healObject" cmd/erasure-healing.go
+```
+
 ### 1.2（補）multi-pool 時 PutObject 的「鎖 + 選 pool」實際落點
 PutObject 在 multi-pool（多個 erasure pools）情境，`(*erasureServerPools).PutObject()` 會先做：
 1) input 檢查：`checkPutObjectArgs(ctx, bucket, object)`
