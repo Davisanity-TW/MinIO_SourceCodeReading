@@ -1,3 +1,5 @@
+- 2026-03-15 14:00：Troubleshooting：`canceling remote connection` 補一段「用 `mc admin info --json` 把 log 的 remoteIP 對到 trace 的 nodeName」小節，讓你看 internal trace 時能更快鎖定是同一台節點。
+
 - 2026-03-15 06:00：Troubleshooting：`canceling remote connection` 補一段「三件套蒐證」（ss retrans / iostat / 60–120s internal trace），讓 incident triage 更快把方向分成網路 vs 資源/背景任務。
 
 - 2026-03-14 22:00：Trace/Healing：補一節「MRF queue 的節流/丟棄行為」：`mrfState.addPartialOp()` non-blocking（opCh 滿會 drop），說明為什麼「有 partial」不代表一定會立刻被補洞。

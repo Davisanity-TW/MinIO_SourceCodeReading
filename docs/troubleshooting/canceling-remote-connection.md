@@ -10,6 +10,25 @@
    - 同時間 remote 節點 `iostat -x` 的 `await/%util` 飆高、或 healing/scanner/rebalance/MRF 很忙 → 優先懷疑 **資源壓力讓 ping handler 跑不動**
 3) **需要落到是哪個 internal handler 在打爆 grid**：抓 60~120 秒 `mc admin trace --type internal`，先把 `grid.*` 事件的熱點列出來
 
+### （新增）把 log 的 `remoteIP:9000` 對到 trace 的 `nodeName`（避免看 trace 看不懂是哪台）
+`canceling remote connection` 的 log 會印出 `localIP:9000->remoteIP:9000`，但 `mc admin trace` 通常用的是 `nodeName`（節點名/端點字串），兩邊常常對不起來。
+
+最省事的做法是：先用 `mc admin info --json` 把節點名與 endpoint 列出來，然後用 remote IP 反查。
+
+```bash
+# 列出所有節點的 endpoint（IP:PORT）與 node name
+mc admin info --json <ALIAS> \
+  | jq -r '.servers[] | [.endpoint,.addr,.hostname,.state] | @tsv'
+
+# 你也可以直接 grep remoteIP
+REMOTE_IP='10.0.0.11'
+mc admin info --json <ALIAS> \
+  | jq -r --arg ip "$REMOTE_IP" '.servers[] | select((.endpoint|tostring)|contains($ip) or (.addr|tostring)|contains($ip))
+         | [.endpoint,.addr,.hostname,.state] | @tsv'
+```
+
+> 有了這張對照表，你在 trace 裡看到 `nodeName` 就能直接回填到 log 的 `local->remote`，關聯會快很多。
+
 > 記得：這條 log 的語意是「server 端 ~60s 沒看到（或沒能處理到）remote 的 ping」，它通常是**結果**（網路或資源），不是根因本身。
 
 ### （新增）跟 PutObject/Healing 的常見共振：partial → MRF → HealObject → I/O 壓力 → grid ping 跟不上
