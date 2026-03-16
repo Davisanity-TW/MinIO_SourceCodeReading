@@ -54,6 +54,42 @@
 
 > 實務用法：看到「PutObject latency 變差 + healing 變多」時，先用上面這張圖把兩條線接起來（多半是 quorum 仍達成但留下 partial → MRF 開始補洞）。
 
+## 0.3 healObject() 內部「真的重建 + 寫回」的呼叫鏈（補精準函式/檔案）
+
+> 這段是把 Healing 從「呼叫到 HealObject」往下鑽到「RS 重建 → 寫到 tmp → RenameData 原子切換」的核心。
+> 以下錨點以 workspace MinIO commit `b413ff9fd` 為準（`/home/ubuntu/clawd/minio`）。
+
+- 檔案：`cmd/erasure-healing.go`
+  - `func (er *erasureObjects) healObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+
+在 `healObject()` 內部，實際上大致可拆成 4 段（每段都有明確的函式/介面切點）：
+
+1) **拿鎖 + 重新讀取 xl.meta（決定 read quorum / 最新版本）**
+   - `er.NewNSLock(bucket, object).GetLock(...)`（若 `!opts.NoLock`）
+   - `readAllFileInfo(ctx, storageDisks, "", bucket, object, versionID, true, true)`
+   - `objectQuorumFromMeta(ctx, partsMetadata, errs, er.defaultParityCount)`
+   - `listOnlineDisks(...)` → `pickValidFileInfo(...)`
+   - `disksWithAllParts(ctx, onlineDisks, partsMetadata, errs, latestMeta, bucket, object, scanMode)`
+
+2) **初始化 RS encoder（NewErasure）並決定要 heal 哪些 disks/parts**
+   - `NewErasure(ctx, latestMeta.Erasure.DataBlocks, latestMeta.Erasure.ParityBlocks, latestMeta.Erasure.BlockSize)`
+   - 依 `availableDisks/errs/dataErrs` 組出 `outDatedDisks`（需要被補的 disks）
+
+3) **對每個 part 做重建：讀來源 → erasure.Heal() → 寫到 .minio.sys/tmp**
+   - 讀來源（ReaderAt）：`newBitrotReader(...)`
+   - 寫入 tmp（Writer）：`newBitrotWriter(...)`（或 inline：`newStreamingBitrotWriterBuffer(...)`）
+   - 核心重建：`err = erasure.Heal(ctx, writers, readers, partSize, prefer)`
+   - tmp 目錄：`minioMetaTmpBucket`（`.minio.sys/tmp`）下以 `tmpID/dstDataDir/part.N` 暫存
+
+4) **原子寫回：RenameData() 把 tmp 內容切到正式 object dataDir**
+   - 介面：`StorageAPI.RenameData(...)`
+   - 呼叫點（同檔案）：`disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bucket, object, RenameOptions{})`
+   - 直覺語意：`.minio.sys/tmp/<tmpID>/.../part.N` → `<bucket>/<object>/<dstDataDir>/part.N`（同時更新/寫回 xl.meta）
+
+> 你要把「heal 造成的 I/O 壓力」跟現象（例如 `canceling remote connection`）對齊時，通常就是在 (3) 的 `erasure.Heal()` 大量讀 + (4) 的 `RenameData()` 大量寫/rename 這兩段把磁碟打滿。
+
+---
+
 ## 1) PutObject：從 ObjectLayer 入口一路落到 erasureObjects.putObject()
 
 PutObject 在 distributed/erasure 架構下，常見的 call chain（按 receiver 層級拆）是：

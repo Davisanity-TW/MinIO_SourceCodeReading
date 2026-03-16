@@ -7,7 +7,10 @@
 
 - **印 log / 判定超時**：`minio/internal/grid/muxserver.go`
   - `(*muxServer).checkRemoteAlive()`：`time.Since(time.Unix(LastPing,0)) > lastPingThreshold` → 印 `canceling remote connection ... not seen for ...` → `m.close()`
-  - `lastPingThreshold = 4 * clientPingInterval`（通常約 ~60s）
+  - `lastPingThreshold = 4 * clientPingInterval`
+- **clientPingInterval 的定義（因此 threshold 幾乎固定 ~60s）**：`minio/internal/grid/grid.go`
+  - `clientPingInterval = 15 * time.Second`
+  - 所以 `lastPingThreshold = 4 * 15s = 60s`
 - **LastPing 更新點（server 收到 ping 時）**：
   - `minio/internal/grid/connection.go`：`(*Connection).handleMsg()` → `handlePing()`（case `OpPing`）
   - `minio/internal/grid/muxserver.go`：`(*muxServer).ping()` → `atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
