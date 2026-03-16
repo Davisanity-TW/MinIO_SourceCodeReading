@@ -55,7 +55,9 @@ mc admin info --json <ALIAS> \
 3) `mrfState.healRoutine()` 消費 queue → `HealObject()` → `(*erasureObjects).healObject()` 真的做 RS rebuild + `RenameData()` 寫回
 4) 背景補洞把 I/O/排程壓力拉高，導致 grid streaming mux 的 `LastPing` 更新延遲 → 觸發這條 log
 
-讀碼對照頁（同 repo）：`docs/trace/putobject-healing.md`
+讀碼對照頁（同 repo）：
+- `docs/trace/putobject-healing.md`
+- `docs/troubleshooting/mrf-queue-drop.md`（MRF queue 滿時會 drop partial op，會影響「有洞是否一定會被補到」）
 
 ### （新增）把 log 直接跟「Healing/MRF 是否正在忙」對齊（不靠 Prometheus 也能做）
 如果你只有節點 log（沒有 metrics/trace），仍然可以用同一時間窗做最基本的關聯：
