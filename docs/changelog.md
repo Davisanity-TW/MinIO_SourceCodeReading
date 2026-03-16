@@ -1,3 +1,5 @@
+- 2026-03-16 22:00：Troubleshooting：`canceling remote connection` 頁整理掉重複的 TL;DR 清單，並補上 `clientPingInterval=15s` 與 `lastPingThreshold=4*clientPingInterval≈60s` 的精準 code anchors（`minio/internal/grid/grid.go` / `muxserver.go`）。
+
 - 2026-03-16 14:00：Troubleshooting：新增 `mrf-queue-drop.md`（MRF queue non-blocking，滿了會 drop partial op）；並在 `canceling-remote-connection.md` 補上延伸閱讀連結。
 
 - 2026-03-16 06:00：Trace：PutObject vs Healing：在 `putobject-healing.md` 補一段「一鍵重抓（避免行號/版本漂移）」：用函式簽名 grep 重新取得 PutObject/renameData/commitRenameDataDir/HealObject/healObject 的錨點。

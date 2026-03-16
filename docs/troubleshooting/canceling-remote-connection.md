@@ -115,15 +115,6 @@ mc admin trace --type internal --json <ALIAS> \
 - retrans 明顯上升 → 先偏網路
 - retrans 不高，但 remote I/O 高、且 trace 顯示 `grid.*` duration 變長 → 先偏資源/背景任務
 
-
-1) **先抄下 log 裡的 `local->remote`**（誰印、誰被斷）與時間窗 `T±5m`
-2) 在 local 節點看 **TCP retrans/RTO**（`ss -ti`）
-   - retrans 明顯上升 → 優先懷疑 **網路/MTU/conntrack/中間設備 idle timeout**
-3) 在 remote 節點看 **磁碟 latency**（`iostat -x`）與是否在跑 **healing/scanner/rebalance**
-   - `await/%util` 飆高 + 背景任務很忙 → 優先懷疑 **資源壓力讓 ping handler 跑不動**
-4) 若是 K8s：同步查 **conntrack** 與 **CNI/MTU**（overlay 常把 60s 心跳問題放大）
-5) 需要把「到底哪個 internal handler 在打爆 grid」釘死時：用 `mc admin trace --type internal` 抓 `grid.*`（本頁後段有 SOP）
-
 ---
 
 ## （新增）先做 MinIO 內部自查：用 admin 指令確認是否「背景任務/資源壓力」共振
