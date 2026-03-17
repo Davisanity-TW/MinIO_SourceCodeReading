@@ -20,6 +20,29 @@
 
 ## TL;DR（10 分鐘內把方向定下來）
 
+### 你可以直接照抄的 0→30 分鐘 SOP（incident 初始處置）
+
+**0–5 分鐘：先把事件「可查」**
+- 從 log 原文抓出：`local->remote`、`not seen for`、時間窗 `T±5m`（本頁後面有模板）。
+- 立刻確認是「固定某一台 remote」反覆發生，還是 remote 會漂移（這會決定你先查 I/O 還是先查網路）。
+
+**5–15 分鐘：用三個最便宜訊號把方向分岔（網路 vs 資源/I/O）**
+1) local 節點：TCP retrans/RTO（偏網路）
+   - `ss -tiH '( sport = :9000 or dport = :9000 )' | head -n 120`
+2) remote 節點：磁碟 latency（偏 I/O 壓力）
+   - `iostat -x 1 3`
+3) 叢集任一節點：MinIO internal trace（偏「哪個模組在拖慢 grid」）
+   - `mc admin trace --type internal --json <ALIAS> | jq -r 'select(.funcName|startswith("grid.")) | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'`
+
+**15–30 分鐘：若偏 I/O/背景任務，優先把共振源釘死**
+- 同時間窗是否有：healing / scanner / rebalance / MRF 補洞。
+- 若有：把瓶頸先對到 3 個最常見 I/O 點（讀碼錨點見後文）：
+  - Healing：`readAllFileInfo()` / `erasure.Heal()` / `disk.RenameData()`
+  - PutObject：`erasure.Encode()` / `renameData()` / `commitRenameDataDir()`
+
+> 這份 SOP 的用意是：先在 30 分鐘內把「大方向」分對（網路 vs 資源/I/O），不要一開始就陷入 grid 細節。
+
+
 1) **先固定那一對節點**：把 log 裡的 `local->remote` 抄下來（誰印 log = local；被斷的是 remote）
 2) **把方向先分成兩類**（最省時間）：
    - 看到明顯 TCP retrans/RTO（`ss -ti`）→ 優先懷疑 **網路/MTU/conntrack/中間設備 idle timeout**

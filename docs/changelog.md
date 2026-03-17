@@ -1,3 +1,5 @@
+- 2026-03-18 06:01：Troubleshooting：`canceling remote connection` 新增「0→30 分鐘 SOP」段落（先用 ss/iostat/internal trace 快速分岔網路 vs 資源/I/O）。
+
 - 2026-03-17 22:01（Asia/Taipei）：Troubleshooting：`canceling remote connection` 補上 client 端 `muxclient` 的 ping/pong 自我保護邏輯：每 15s ping、30s 沒 pong 直接 `ErrDisconnected`，避免只看 server 端 ~60s threshold。
 - 2026-03-17 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 補齊 PutObject 留 partial 時的精準 code anchors：`erasureObjects.addPartial()` → `globalMRFState.addPartialOp()`（non-blocking，queue 滿會 drop）→ `mrfState.healRoutine()` 消費 queue 呼叫 `healObject()`；Troubleshooting：`canceling remote connection` 補上「interval/threshold 多為常數、排查應回到為何 60s 內 ping 沒被處理」的註記。
 
