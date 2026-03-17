@@ -232,6 +232,30 @@ if last > lastPingThreshold {
 - `lastPingThreshold = 4 * clientPingInterval`（`minio/internal/grid/muxserver.go:31`）
   - 也就是 **~60 秒沒看到 ping**，server 端就會判定 remote 不健康並取消。
 
+### 1.0.A)（補）client 端其實也有自我保護：多久沒收到 pong 會自動斷？（2 * 15s = 30s）
+
+同一套 grid 心跳在 client 端也會做檢查（避免 request 一直掛著）：
+
+- `minio/internal/grid/muxclient.go`：`(*muxClient).handleOneWayStream()`
+  - 每 `clientPingInterval`（15s）送一次 `OpPing`
+  - 若超過 `clientPingInterval*2`（30s）都沒更新 `LastPong`，會直接回 `ErrDisconnected` 並關閉該 mux
+
+對應邏輯（節錄）：
+```go
+if time.Since(time.Unix(atomic.LoadInt64(&m.LastPong), 0)) > clientPingInterval*2 {
+    m.addErrorNonBlockingClose(respHandler, ErrDisconnected)
+    return
+}
+// Send new ping.
+gridLogIf(m.ctx, m.send(message{Op: OpPing, MuxID: m.MuxID}))
+```
+
+實務意義：
+- **client 端 30s 沒 pong** 可能就會先放棄（你在 remote 端不一定會看到 60s 的 `canceling remote connection`）
+- 所以排查時要同時看兩邊 log：
+  - client 端：是否開始報 `ErrDisconnected`、或相關 request/handler 超時
+  - server 端：是否開始印 `canceling remote connection ... not seen for ...`
+
 ### 1.0)（補）把「server 端 60s 沒看到 ping」對到 client 端：ping loop 在哪裡送？
 你在排查時常會卡在一個點：
 - log 是 **server 端**印的（`checkRemoteAlive()` 看 `LastPing`）
