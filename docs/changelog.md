@@ -1,3 +1,5 @@
+- 2026-03-17 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 補齊 PutObject 留 partial 時的精準 code anchors：`erasureObjects.addPartial()` → `globalMRFState.addPartialOp()`（non-blocking，queue 滿會 drop）→ `mrfState.healRoutine()` 消費 queue 呼叫 `healObject()`；Troubleshooting：`canceling remote connection` 補上「interval/threshold 多為常數、排查應回到為何 60s 內 ping 沒被處理」的註記。
+
 - 2026-03-17 06:00（Asia/Taipei）：Trace：`putobject-healing.md` 補齊 `(*erasureObjects).healObject()` 內部「拿鎖/重讀 xl.meta → erasure.Heal() 重建 → 寫入 `.minio.sys/tmp` → `StorageAPI.RenameData()` 原子寫回」的精準函式/檔案呼叫鏈；Troubleshooting：`canceling remote connection` 補上 `clientPingInterval=15s` 與 `lastPingThreshold=4*clientPingInterval≈60s` 的精準 code anchors（`minio/internal/grid/grid.go` / `muxserver.go`）。
 
 - 2026-03-16 14:00：Troubleshooting：新增 `mrf-queue-drop.md`（MRF queue non-blocking，滿了會 drop partial op）；並在 `canceling-remote-connection.md` 補上延伸閱讀連結。

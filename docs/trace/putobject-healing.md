@@ -33,13 +33,20 @@
   - encode：`erasure.Encode(...)`
   - tmp→正式：`renameData(...)` → `commitRenameDataDir(...)`
   - quorum 過但有洞：`er.addPartial(...)` → `globalMRFState.addPartialOp(...)`
+    - `cmd/erasure-object.go:2107`：`func (er erasureObjects) addPartial(bucket, object, versionID string)`
+      - 只做一件事：把 `partialOperation{bucket,object,versionID,queued:time.Now()}` 丟進 `globalMRFState.opCh`
+    - `cmd/mrf.go:52`：`func (m *mrfState) addPartialOp(op partialOperation)`
+      - `select { case m.opCh <- op: default: }`（queue 滿就直接 drop，不會 block PutObject）
 
 ### 0.2 Healing 主線（背景補洞/重建）
 
 - 來源 A：MRF（PutObject 成功但缺片）
   - `cmd/mrf.go`
     - `(*mrfState).addPartialOp(...)`
-    - `(*mrfState).healRoutine(...)`（消費 queue）
+    - `(*mrfState).healRoutine(z *erasureServerPools)`（消費 queue）
+      - `cmd/mrf.go:68`：`func (m *mrfState) healRoutine(z *erasureServerPools)`
+      - 核心 loop：`u := <-m.opCh` →（必要時 sleep 1s）→ `healSleeper.Timer()` → `healObject(u.bucket,u.object,u.versionID,scan)` → `wait()`
+      - 會跳過 `.minio.sys` 的 `.metacache/ tmp/ multipart/ tmp-old/`（避免對暫存物件做 MRF heal）
     - `healObject(...)` helper → `z.HealObject(...)`
 - 來源 B：scanner（背景掃描直接觸發 heal）
   - `cmd/data-scanner.go`

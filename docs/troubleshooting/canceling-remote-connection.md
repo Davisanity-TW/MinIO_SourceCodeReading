@@ -11,6 +11,7 @@
 - **clientPingInterval 的定義（因此 threshold 幾乎固定 ~60s）**：`minio/internal/grid/grid.go`
   - `clientPingInterval = 15 * time.Second`
   - 所以 `lastPingThreshold = 4 * 15s = 60s`
+  - 目前這個 interval/threshold 不是常見的 runtime 設定項（多數版本是寫死常數）；因此排查通常要回到「為什麼 60s 內 ping 沒被處理」而不是去找調參。
 - **LastPing 更新點（server 收到 ping 時）**：
   - `minio/internal/grid/connection.go`：`(*Connection).handleMsg()` → `handlePing()`（case `OpPing`）
   - `minio/internal/grid/muxserver.go`：`(*muxServer).ping()` → `atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
