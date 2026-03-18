@@ -1,3 +1,5 @@
+- 2026-03-18 14:00（Asia/Taipei）：Trace/Healing：補一節「`healObject()` 裡最吃 I/O 的兩個切點」：`erasure.Heal()`（重建）+ `StorageAPI.RenameData()`（寫回/rename），並附快速 grep 定位指令。
+
 - 2026-03-18 06:01：Troubleshooting：`canceling remote connection` 新增「0→30 分鐘 SOP」段落（先用 ss/iostat/internal trace 快速分岔網路 vs 資源/I/O）。
 
 - 2026-03-17 22:01（Asia/Taipei）：Troubleshooting：`canceling remote connection` 補上 client 端 `muxclient` 的 ping/pong 自我保護邏輯：每 15s ping、30s 沒 pong 直接 `ErrDisconnected`，避免只看 server 端 ~60s threshold。

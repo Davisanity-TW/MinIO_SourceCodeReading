@@ -207,6 +207,42 @@ grep -RIn "func (m \*mrfState) healRoutine" -n cmd/mrf.go
 
 ---
 
+## 1.7（補）`healObject()` 裡最吃 I/O 的兩個切點：`erasure.Heal()` + `StorageAPI.RenameData()`
+
+> 你在現場看到 healing duration 變長、或跟 `canceling remote connection` / PutObject latency 共振時，最常要釘死的是：**(a) RS 重建讀取量**、以及 **(b) 寫回/rename 的落盤量**。
+
+以 workspace MinIO (`/home/ubuntu/clawd/minio`, commit `b413ff9fd`) 來說：
+
+- 重建（讀來源 → RS heal → 產出 shard）：
+  - 檔案：`cmd/erasure-healing.go`
+  - 觀察點：`func (er *erasureObjects) healObject(...)` 內對 `erasure.Heal(...)` 的呼叫
+- 寫回（tmp → 正式資料目錄的原子切換）：
+  - 介面：`StorageAPI.RenameData(...)`
+  - 實作：`(*xlStorage).RenameData(...)`
+
+快速定位（避免行號飄）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+git rev-parse --short HEAD
+
+# healObject() 本體
+grep -RIn "^func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
+
+# RS heal / writeback 的兩個關鍵點
+grep -RIn "\\.Heal(ctx" -n cmd/erasure-healing.go
+grep -RIn "RenameData(ctx" -n cmd/erasure-healing.go cmd/erasure-object.go cmd/xl-storage.go
+
+# StorageAPI 介面定義（便於追到所有實作）
+grep -RIn "type StorageAPI interface" -n cmd | head
+```
+
+補充：PutObject 寫入成功但留下 partial（MRF 補洞）時，後續 healing 也是一路走到同一個 `healObject()` 內部，因此你若要把「PutObject → 背景補洞 → I/O 壓力」串起來，建議同時參考：
+- Trace：`/trace/putobject-healing`
+- Troubleshooting：`/troubleshooting/canceling-remote-connection`
+
+---
+
 ## 2) 單顆 disk healing 的實際工作：`healFreshDisk()`
 
 - 檔案：`cmd/background-newdisks-heal-ops.go`
