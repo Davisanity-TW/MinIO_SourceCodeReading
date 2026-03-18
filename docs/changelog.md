@@ -1,3 +1,5 @@
+- 2026-03-18 22:00：Trace/Troubleshooting：把 PutObjectHandler→PutObject() 的實際呼叫片段補進 PutObject vs Healing；並修正 canceling remote connection / PutObject vs Healing 內對本機 source tree/commit 的假設，改以 upstream master 為準。
+
 - 2026-03-18 14:00（Asia/Taipei）：Trace/Healing：補一節「`healObject()` 裡最吃 I/O 的兩個切點」：`erasure.Heal()`（重建）+ `StorageAPI.RenameData()`（寫回/rename），並附快速 grep 定位指令。
 
 - 2026-03-18 06:01：Troubleshooting：`canceling remote connection` 新增「0→30 分鐘 SOP」段落（先用 ss/iostat/internal trace 快速分岔網路 vs 資源/I/O）。

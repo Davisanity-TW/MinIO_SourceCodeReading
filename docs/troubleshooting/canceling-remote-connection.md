@@ -3,7 +3,7 @@
 > 這個訊息不是 S3 client 端的錯誤本體，而是 **MinIO server 內部的 inter-node RPC（grid）** 在判定「對端連線不健康」時，主動切斷遠端連線的 log。
 
 ## Code anchors（先把「哪裡印的 / 看的是什麼 timestamp」釘死）
-以 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）為準，這行 log 的最短關聯鏈是：
+以 upstream MinIO `master`（GitHub raw/檔名與函式名）為準（行號可能因版本不同而漂移），這行 log 的最短關聯鏈是：
 
 - **印 log / 判定超時**：`minio/internal/grid/muxserver.go`
   - `(*muxServer).checkRemoteAlive()`：`time.Since(time.Unix(LastPing,0)) > lastPingThreshold` → 印 `canceling remote connection ... not seen for ...` → `m.close()`
