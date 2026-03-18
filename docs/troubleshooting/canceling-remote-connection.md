@@ -20,6 +20,32 @@
 
 ## TL;DR（10 分鐘內把方向定下來）
 
+### 最小蒐證包（建議直接貼到 incident note）
+把同一條 log 拆成 3 個欄位，後續對齊 trace/metrics 才不會迷路：
+- **time window**：`T ± 5m`
+- **local->remote**：`A:9000 -> B:9000`
+- **not seen for**：`~60s`（通常接近 `lastPingThreshold = 4*clientPingInterval`）
+
+然後在 **同一時間窗** 各取 1 份（60–120s 內就夠）：
+1) local 節點：TCP retrans/RTO（判斷偏網路還是偏資源）
+```bash
+ss -tiH '( sport = :9000 or dport = :9000 )' | head -n 120
+```
+2) remote 節點：磁碟延遲（是否 I/O 把 goroutine/handler 拖到 ping 沒被處理）
+```bash
+iostat -x 1 3
+```
+3) 叢集任一節點：internal trace 熱點（把「grid 斷線」落到「哪個 handler 在變慢/狂打」）
+```bash
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|startswith("grid."))
+           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
+```
+
+> 如果你只做這三件事，通常就能把方向很快分成：
+> - **網路/丟包/conntrack/MTU**（retrans/RTO 明顯）
+> - **資源/I/O/背景任務**（iostat await/%util 高、同時間 healing/scanner/MRF 活躍）
+
 ### 你可以直接照抄的 0→30 分鐘 SOP（incident 初始處置）
 
 **0–5 分鐘：先把事件「可查」**
