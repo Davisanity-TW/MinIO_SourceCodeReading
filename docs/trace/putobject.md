@@ -473,3 +473,75 @@ PutObject 成功 commit 後，如果偵測到任何 disk offline（或中途變 
 ## 6. 本輪進度
 - 補齊 `cmd/api-router.go` 內 PutObject 的實際 route matcher（含 Copy/Extract/Append reject/multipart part 分流）
 - 把 ObjectLayer 的取得方式與 handler 呼叫鏈整理成可對照的索引
+
+---
+
+## 4. 往下追到底：`erasureSets` → `erasureObjects.putObject()` → rename/commit → partial(MRF)
+
+> 本段是把 PutObject 從 `erasureServerPools.PutObject()` 再往下鑽到「真正 encode + 寫入 + rename commit」的層級，並把「寫 quorum 成功但留下缺片」如何進 MRF queue 也一起釘死。
+>
+> 下面的檔名/函式名以 upstream `master` 與本 workspace 的 `/home/ubuntu/clawd/minio` 結構為準；行號請用 `grep` 重抓（避免版本漂移）。
+
+### 4.1 `erasureServerPools` → `erasureSets`
+- 檔案：`cmd/erasure-server-pool.go`
+  - `func (z *erasureServerPools) PutObject(...) (ObjectInfo, error)`
+  - multi-pool：NSLock + `getPoolIdxNoLock()` → `z.serverPools[idx].PutObject(...)`
+
+- 檔案：`cmd/erasure-sets.go`
+  - `func (s *erasureSets) PutObject(...) (ObjectInfo, error)`
+  - 主要工作：
+    - `set := s.getHashedSet(object)`（或等價函式）決定落到哪個 erasure set
+    - 導向 set 的 `erasureObjects` 實作：`set.PutObject(...)`
+
+快速定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func (z \\*erasureServerPools) PutObject" -n cmd/erasure-server-pool.go
+grep -RIn "func (s \\*erasureSets) PutObject" -n cmd/erasure-sets.go
+```
+
+### 4.2 `erasureObjects.PutObject()` → `erasureObjects.putObject()`（真正落盤主流程）
+- 檔案：`cmd/erasure-object.go`
+  - wrapper：`func (er erasureObjects) PutObject(...) (ObjectInfo, error)`
+  - 主流程：`func (er erasureObjects) putObject(...) (ObjectInfo, error)`
+
+在 `putObject()` 內，通常可拆成以下幾個「很適合插觀測點」的區塊：
+
+1) **準備 metadata / dataDir / write quorum**
+- 決定 versionID / dataDir（不同版本細節不同）
+- 決定 write quorum（取決於 data/parity blocks + online disks）
+
+2) **encode 與寫入（RS / bitrot）**
+- 你會看到類似：
+  - `erasure.Encode(...)` 或等價 encoder 寫入流程
+  - 對每個 disk 寫 `part.N`（帶 bitrot）
+
+3) **tmp → 正式：rename + commit（原子切換點）**
+- 常見關鍵函式：
+  - `renameData(...)`
+  - `commitRenameDataDir(...)`
+
+4) **quorum 達成但仍有洞：把 partial 丟進 MRF queue（後續 healing 補洞）**
+- 關鍵：`er.addPartial(bucket, object, versionID)`
+  - 內部會呼叫：`globalMRFState.addPartialOp(partialOperation{...})`
+
+快速定位（建議直接照抄）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func (er erasureObjects) PutObject" -n cmd/erasure-object.go
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
+
+grep -n "^func renameData" cmd/erasure-object.go
+grep -RIn "commitRenameDataDir" -n cmd/erasure-object.go
+
+grep -RIn "func (er erasureObjects) addPartial" -n cmd/erasure-object.go
+grep -RIn "globalMRFState\\.addPartialOp" -n cmd/erasure-object.go cmd/mrf.go
+```
+
+> 實務判讀：如果你看到 PutObject handler latency/timeout 變多，或同時間 healing/MRF 變忙，`renameData()/commitRenameDataDir()`（大量 rename/fsync）與 `er.addPartial()`（留下缺片）通常是最值得優先盯的兩個切點。
+
+### 4.3 PutObject 與 Healing 的接點（延伸閱讀）
+- PutObject 成功但留下缺片（partial）→ **MRF queue** → `HealObject()` 補洞的完整呼叫鏈，請見：
+  - `docs/trace/putobject-healing.md`

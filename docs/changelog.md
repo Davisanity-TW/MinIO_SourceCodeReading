@@ -1,3 +1,5 @@
+- 2026-03-19 14:00（Asia/Taipei）：Trace：`putobject.md` 往下補齊 `erasureSets` → `erasureObjects.putObject()` → `renameData/commitRenameDataDir` → `addPartial(MRF)` 的呼叫鏈與 grep 定位；Troubleshooting：`canceling remote connection` 補上一鍵 grep 確認 threshold/印出點的小節。
+
 - 2026-03-19 06:00（Asia/Taipei）：Troubleshooting：`canceling remote connection` 追加「最小蒐證包」段落（time window/local->remote/not-seen-for + ss/iostat/internal trace 三件套），讓 incident note 能直接套用。
 
 - 2026-03-18 22:00：Trace/Troubleshooting：把 PutObjectHandler→PutObject() 的實際呼叫片段補進 PutObject vs Healing；並修正 canceling remote connection / PutObject vs Healing 內對本機 source tree/commit 的假設，改以 upstream master 為準。

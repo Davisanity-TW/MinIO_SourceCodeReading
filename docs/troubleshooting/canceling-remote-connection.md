@@ -1095,3 +1095,27 @@ mc admin trace --type internal --json <ALIAS> \
 - `dmesg -T | egrep -i 'timeout|reset|I/O error'`（是否有 storage 層 reset/timeout）
 
 > 只要「同時間窗」能對上 `healing/scanner/MRF` + `await/%util` 尖峰，這條 grid log 幾乎就可以先當成 *症狀*（ping handler 來不及更新），排查重點應該回到 healing/MRF 的 I/O 與磁碟健康，而不是先鑽 grid 參數。
+
+---
+
+## （補）一鍵確認你的 MinIO 版本「threshold 仍是 ~60s」以及 log 的印出點
+
+> 目的：不同 MinIO 版本可能重構 grid；先用 grep 把「印 log 的地方」與「threshold 是怎麼算的」釘死，避免你拿錯版的結論。
+
+在你的 MinIO checkout（RELEASE tag 或線上 build 對應的 source）執行：
+
+```bash
+cd /path/to/minio
+
+grep -RIn "canceling remote connection" -n internal/grid | head
+
+grep -RIn "checkRemoteAlive" -n internal/grid | head
+
+grep -RIn "clientPingInterval" -n internal/grid | head
+```
+
+預期你會看到類似：
+- `lastPingThreshold = 4 * clientPingInterval`
+- `clientPingInterval = 15 * time.Second`
+
+如果你發現 interval/threshold 不再是常數、或變成可調參，請把該 commit/tag 記到事件筆記中（後續調參/升級決策會用到）。
