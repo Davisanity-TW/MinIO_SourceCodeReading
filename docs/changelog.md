@@ -1,3 +1,4 @@
+- 2026-03-20 06:00（Asia/Taipei）：Troubleshooting：`canceling remote connection` 新增「超快判斷：網路 vs 對端忙」三問（retrans/RTO、remote I/O、背景任務）段落，方便 incident triage 快速分流。
 - 2026-03-19 22:00（Asia/Taipei）：Troubleshooting：`canceling remote connection` 補上「CPU/GC/排程導致 ping handler 跟不上」的進階排查（CPU throttling、SIGQUIT stack dump、pprof 對齊時間窗）。
 - 2026-03-19 14:00（Asia/Taipei）：Trace：`putobject.md` 往下補齊 `erasureSets` → `erasureObjects.putObject()` → `renameData/commitRenameDataDir` → `addPartial(MRF)` 的呼叫鏈與 grep 定位；Troubleshooting：`canceling remote connection` 補上一鍵 grep 確認 threshold/印出點的小節。
 

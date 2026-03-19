@@ -20,6 +20,23 @@
 
 ## TL;DR（10 分鐘內把方向定下來）
 
+### 超快判斷：這行 log 比較像「網路」還是「對端忙」？
+把 `canceling remote connection A:9000->B:9000 not seen for ~60s` 當作**症狀**，先用同一時間窗（T±5m）做 3 個 yes/no：
+
+1) **TCP 重傳/RTO 有沒有明顯升高？**（偏網路）
+   - local 節點跑：`ss -tiH '( sport = :9000 or dport = :9000 )' | head -n 120`
+
+2) **remote 節點磁碟 latency / util 有沒有尖峰？**（偏 I/O/資源壓力）
+   - remote 節點跑：`iostat -x 1 3`
+
+3) **同時間窗是否有背景工作活躍？**（偏 healing/scanner/rebalance/MRF）
+   - 在 log/trace/metrics 內找：`heal|healing|scanner|rebalance|mrf|partial`
+
+判讀（粗但很實用）：
+- (1) 是、(2)(3) 否 → 先偏 **網路/CNI/MTU/conntrack**
+- (1) 否、(2) 是 或 (3) 是 → 先偏 **I/O/CPU/GC/背景任務壓力**（ping handler 跑不動）
+- 三個都不明顯 → 先查 **時鐘/NTP 跳動**（time.Since 會被回撥放大）+ 針對固定 remote 做更深系統層蒐證
+
 ### 最小蒐證包（建議直接貼到 incident note）
 把同一條 log 拆成 3 個欄位，後續對齊 trace/metrics 才不會迷路：
 - **time window**：`T ± 5m`
