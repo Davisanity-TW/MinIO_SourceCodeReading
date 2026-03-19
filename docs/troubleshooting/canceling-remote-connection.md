@@ -1119,3 +1119,70 @@ grep -RIn "clientPingInterval" -n internal/grid | head
 - `clientPingInterval = 15 * time.Second`
 
 如果你發現 interval/threshold 不再是常數、或變成可調參，請把該 commit/tag 記到事件筆記中（後續調參/升級決策會用到）。
+
+---
+
+## （新增）進階：如果你懷疑不是網路，而是「CPU/GC/排程」讓 ping handler 跑不動
+
+> 情境：`ss -ti` 看起來 retrans/RTO 不明顯，但 `canceling remote connection` 仍然頻繁；同時間也看不出特別大的 disk await（或你拿不到 iostat）。
+>
+> 這時候很常見的根因是：
+> - CPU 飽和（尤其是 encode/heal、checksum、加密/壓縮）
+> - Go GC 暫停/記憶體壓力（allocation spike）
+> - goroutine 排程被大量 I/O 或 lock contention 拖慢
+>
+> 導致結果是：封包其實有到，但 `OpPing` 的 handler 沒被即時排到（或 mux loop 沒時間更新 `LastPing`）。
+
+### A) 先用最便宜的 3 個 OS 訊號判斷是不是「排程不動」
+在 **local**（印 log 的那台）與 **remote**（被 cancel 的那台）都抓一份：
+
+1) CPU 與 run queue：
+```bash
+uptime
+mpstat -P ALL 1 3
+```
+- `load average` 長期 > CPU core 數量、且 `mpstat` 顯示 `usr+sys` 高 → 偏 CPU 飽和
+- `iowait` 高 → 偏 I/O 壓力
+
+2) context switch / runnable threads：
+```bash
+vmstat 1 3
+```
+- `r`（run queue）長期偏高 → goroutine/threads 競爭 CPU
+
+3) 若你跑在 K8s：確認是不是 CPU throttling（常見！）
+```bash
+# containerd / cgroup v2 常見路徑（依環境調整）
+cat /sys/fs/cgroup/cpu.stat 2>/dev/null | sed -n '1,120p'
+```
+- `nr_throttled`/`throttled_usec` 快速上升 → 典型是 CPU limit 太緊，導致 ping handler 被節流
+
+### B) 直接抓 MinIO 的「即時堆疊」：看看是不是卡在 heal/encode/rename/lock
+如果你能在節點上對 minio process 下指令（systemd 或裸機），在發生當下抓一份堆疊會非常有用：
+
+```bash
+# 找 PID（依你的啟動方式）
+pgrep -fa minio
+
+# 觸發 Go stack dump（需要 minio 有接 SIGQUIT 的預設行為；輸出通常在 stderr/journal）
+kill -QUIT <PID>
+
+# 然後立刻看 journal
+journalctl -u minio -n 200 --no-pager
+```
+
+你想在 stack dump 裡找的關鍵字通常是：
+- `erasureObjects.healObject` / `erasure.Heal` / `RenameData`
+- `erasureObjects.putObject` / `erasure.Encode` / `commitRenameDataDir`
+- `nsLock` / `GetLock`（鎖競爭）
+- `grid` / `mux`（是否大量卡在 grid handler）
+
+> 有這份堆疊，你幾乎可以在 10 分鐘內把方向定在：CPU 飽和、I/O、鎖、或特定背景任務。
+
+### C) 若你有 pprof：用 60 秒 profile 對齊時間窗
+（這段依版本/設定而異，建議只在你熟悉的環境開；避免在高負載時長時間 profile）
+
+- 目標：拿到 `cpu` profile + `goroutine` dump，對照 `T±5m` 看 top hot path。
+- 常見熱點：`sha256`/`s2`/`kms`/`erasure.Encode`/`erasure.Heal`/`rename`/`readAllFileInfo`。
+
+---
