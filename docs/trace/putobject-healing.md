@@ -139,7 +139,6 @@ grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
 ### 1.1（補）以目前 workspace source tree 的「精準位置」對照（含行號/commit）
 > 下面行號是我在本 workspace（`/path/to/minio`）當下 checkout 直接 grep 出來的結果；你換 MinIO 版本/commit 後行號會飄，但函式簽名不太會變。
 
-- 
 - `cmd/object-handlers.go`
   - `objectAPIHandlers.PutObjectHandler()`：`cmd/object-handlers.go:1987`
 - `cmd/erasure-server-pool.go`
@@ -199,6 +198,15 @@ PutObject 在 multi-pool（多個 erasure pools）情境，`(*erasureServerPools
 - Healing 入口（同 commit）
   - `(*erasureServerPools).HealObject(...)`：`cmd/erasure-server-pool.go:2319`
   - `(*erasureObjects).healObject(...)`：`cmd/erasure-healing.go:242`
+
+### 1.3（新增）現場筆記最小欄位（把 PutObject ↔ Healing 關聯記得可回溯）
+建議你每次在 incident note 記到「PutObject 之後出現 healing / grid 斷線」時，至少固定寫下：
+- time window：`T ± 5m`
+- object key：`bucket/object`（最好含 versionID）
+- PutObject 是不是有 offline disk / partial（是否走到 `addPartial()` / MRF）
+- 同時間窗 healing 是否活躍（MRF queue / scanner / admin heal）
+
+目的：後續你要回到同一個 RELEASE tag 抓 grep 錨點、或用 trace/pprof 對齊時，會非常省時間。
 
 如果要自己重抓一次（避免行號不一致）：
 ```bash
