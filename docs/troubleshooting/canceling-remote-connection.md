@@ -18,6 +18,10 @@
 
 > 判讀重點：這條 log 的語意是「server 端在 ~60s 內沒看到（或沒能處理到）remote 的 ping」；原因可能是封包沒到（網路）或 handler 跑不動（I/O/CPU/GC/背景任務）。
 
+**快速 sanity check：`not seen for` 的時間是否「明顯不是 ~60s」？**
+- 多數情況你會看到接近 `~60s`（=`lastPingThreshold = 4 * clientPingInterval = 4 * 15s`）。
+- 如果 `not seen for` 明顯偏離（例如只有幾秒就觸發、或突然跳到好幾分鐘），先把 **時鐘/NTP 跳動** 納入排查（`time.Since(time.Unix(LastPing,0))` 會受系統時間回撥/大幅校時影響）。
+
 ## TL;DR（10 分鐘內把方向定下來）
 
 ### 超快判斷：這行 log 比較像「網路」還是「對端忙」？
