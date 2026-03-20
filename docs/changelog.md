@@ -158,3 +158,5 @@
 - 2026-01-29：新增 Trace 專區（PutObject / Healing）與側邊欄連結。
 - 2026-01-28：初始化知識庫網站骨架。
 - 2026-02-20 08:00（Asia/Taipei）：補齊 Trace PutObject/Healing：新增 healObject() 內部（readAllFileInfo → erasure.Heal → RenameData）呼叫鏈與讀碼定位；便於與 canceling remote connection 事件關聯排查。
+- 2026-03-20 22:00：Troubleshooting：新增 grid  筆記頁（client ~30s 沒 pong 自動斷線 vs server ~60s watchdog），提供 10 分鐘 SOP（網路 vs I/O/背景任務）。
+- 2026-03-20 22:00：Troubleshooting：新增 grid `ErrDisconnected` 筆記頁（client ~30s 沒 pong 自動斷線 vs server ~60s watchdog），提供 10 分鐘 SOP（網路 vs I/O/背景任務）。
