@@ -197,7 +197,14 @@ PutObject 在 multi-pool（多個 erasure pools）情境，`(*erasureServerPools
 
 - Healing 入口（同 commit）
   - `(*erasureServerPools).HealObject(...)`：`cmd/erasure-server-pool.go:2319`
+  - `(*erasureSets).HealObject(...)`：`cmd/erasure-sets.go:1176`
+  - `erasureObjects.HealObject(...)`：`cmd/erasure-healing.go:999`
   - `(*erasureObjects).healObject(...)`：`cmd/erasure-healing.go:242`
+
+（補）MRF（Most Recently Failed）queue 的精準錨點（同 commit）
+  - `type partialOperation struct`：`cmd/mrf.go:35`
+  - `(*mrfState).addPartialOp(...)`：`cmd/mrf.go:52`（non-blocking，滿了會 drop）
+  - `(*mrfState).healRoutine(...)`：`cmd/mrf.go:68`（消費 queue，呼叫 `HealObject()`）
 
 ### 1.3（新增）現場筆記最小欄位（把 PutObject ↔ Healing 關聯記得可回溯）
 建議你每次在 incident note 記到「PutObject 之後出現 healing / grid 斷線」時，至少固定寫下：

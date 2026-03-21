@@ -1,3 +1,4 @@
+- 2026-03-21 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 追加本機 workspace（commit `b413ff9fd`）的 Healing/MRF 精準行號錨點（`HealObject`/`healObject`/`partialOperation`/`healRoutine`），方便直接跳轉對照。
 - 2026-03-21 06:00（Asia/Taipei）：Trace：`putobject-healing.md` 修正段落格式（移除空 bullet），並新增「incident note 最小欄位」小節，方便 PutObject ↔ Healing 的現場回溯。
 - 2026-03-20 14:00（Asia/Taipei）：Troubleshooting：`canceling remote connection` 補一個 sanity check：若 `not seen for` 明顯不是 ~60s，優先把時鐘/NTP 跳動納入排查（避免誤判成網路/負載）。
 - 2026-03-20 06:00（Asia/Taipei）：Troubleshooting：`canceling remote connection` 新增「超快判斷：網路 vs 對端忙」三問（retrans/RTO、remote I/O、背景任務）段落，方便 incident triage 快速分流。
