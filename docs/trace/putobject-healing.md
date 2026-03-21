@@ -842,3 +842,23 @@ grep -RIn "TraceHealing" -n . | head -n 50
 
 實務判讀：
 - 若你在 `mc admin trace --type healing`（或 internal trace）看到 healing 事件量暴增、且 duration 拉長，同時間又出現 `canceling remote connection ... not seen for ...`，通常代表「修復路徑把 I/O/排程壓力拉高」而不是單純網路抖動。
+
+---
+
+## 9)（新增）跟 `canceling remote connection` 的「最短因果鏈」對照（方便寫 incident note）
+
+你在現場最常需要寫成一句話、且能回鏈到 code 的版本化描述。建議用下面這條最短鏈：
+
+1) **PutObject quorum 達成但留下缺片（partial）**
+- `cmd/erasure-object.go`：`erasureObjects.putObject()` 在 `commitRenameDataDir(...)` 後段偵測到部分 `onlineDisks[i]` offline → `er.addPartial(bucket, object, fi.VersionID)`（或 `versions` disparity → `globalMRFState.addPartialOp(...)`）
+
+2) **MRF 背景補洞開始跑（HealObject）**
+- `cmd/mrf.go`：`(*mrfState).healRoutine()` 消費 `partialOperation` → `z.HealObject(...)`
+
+3) **Healing 真正重建/寫回造成 I/O 壓力**
+- `cmd/erasure-healing.go`：`(*erasureObjects).healObject()` 內部 `readAllFileInfo(...)` / `erasure.Heal(...)` / `disk.RenameData(...)`
+
+4) **grid streaming mux 心跳（ping）因資源壓力延遲 → 觸發 watchdog**
+- `minio/internal/grid/muxserver.go`：`(*muxServer).checkRemoteAlive()` 判定 `LastPing` 超過 threshold → 印 `canceling remote connection ... not seen for ...` → `m.close()`
+
+> 延伸閱讀（同 repo）：`docs/troubleshooting/canceling-remote-connection.md`
