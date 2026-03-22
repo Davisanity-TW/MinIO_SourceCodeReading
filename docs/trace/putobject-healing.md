@@ -101,6 +101,15 @@ objInfo, err := putObject(ctx, bucket, object, pReader, opts)
    - tmp 目錄：`minioMetaTmpBucket`（`.minio.sys/tmp`）下以 `tmpID/dstDataDir/part.N` 暫存
 
 4) **原子寫回：RenameData() 把 tmp 內容切到正式 object dataDir**
+- 介面：`StorageAPI.RenameData(...)`（定義：`cmd/storage-interface.go`）
+- 常見實作：`(*xlStorage).RenameData(...)`（檔案：`cmd/xl-storage.go`）
+- rename 的實際底層行為（概念）：
+  - 建立目的地 dataDir（若不存在）
+  - 把每個 `part.N` 從 tmp 原子移動（同 disk 上是 rename；跨 device 會退化成 copy+fsync）
+  - 更新/落盤 `xl.meta`（`xlMetaV2`）
+
+> 實務抓點：你要查「為什麼 healing 很慢/打爆 I/O」時，`RenameData()` 是最常被忽略但很關鍵的段落：它可能觸發大量 metadata ops（mkdir/rename/fsync），而且跟底層檔案系統/磁碟 firmware 行為耦合很深。
+
    - 介面：`StorageAPI.RenameData(...)`
    - 呼叫點（同檔案）：`disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bucket, object, RenameOptions{})`
    - 直覺語意：`.minio.sys/tmp/<tmpID>/.../part.N` → `<bucket>/<object>/<dstDataDir>/part.N`（同時更新/寫回 xl.meta）

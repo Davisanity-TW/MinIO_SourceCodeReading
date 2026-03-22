@@ -1,3 +1,5 @@
+- 2026-03-22 14:00（Asia/Taipei）：Trace：補強 `putobject-healing.md` 的 `RenameData()` 實作錨點（`StorageAPI.RenameData` → `xlStorage.RenameData`）與底層行為提示；Troubleshooting：`canceling remote connection` 新增 Kubernetes/CNI 的 MTU/conntrack/idle-timeout 三件套快速檢查。
+
 - 2026-03-22 06:00（Asia/Taipei）：Trace：`putobject-healing.md` 新增一節「`canceling remote connection` 最短因果鏈」對照（PutObject partial → MRF → healObject I/O → grid watchdog），方便 incident note 快速回鏈。
 - 2026-03-21 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 追加本機 workspace（commit `b413ff9fd`）的 Healing/MRF 精準行號錨點（`HealObject`/`healObject`/`partialOperation`/`healRoutine`），方便直接跳轉對照。
 - 2026-03-21 06:00（Asia/Taipei）：Trace：`putobject-healing.md` 修正段落格式（移除空 bullet），並新增「incident note 最小欄位」小節，方便 PutObject ↔ Healing 的現場回溯。

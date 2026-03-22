@@ -24,6 +24,24 @@
 
 ## TL;DR（10 分鐘內把方向定下來）
 
+### （新增）Kubernetes/CNI 情境的 3 個快速檢查（最常踩雷）
+如果 MinIO 跑在 Kubernetes（或經過 overlay/NAT），這條 log 很常跟「封包走得太繞 + conntrack/MTU/idle timeout」一起出現。先用最便宜的 3 個檢查把雷排掉：
+
+1) **MTU 是否不一致（尤其 VXLAN/Geneve/Calico/Flannel）**
+- 症狀：大量小包 OK，但大包（含某些 RPC frame）間歇丟失 → ping 沒更新 → 60s 斷線
+- 檢查：比對 node/pod 的 MTU（`ip link`）+ CNI MTU 設定；必要時用 `ping -M do -s <size>` 測 PMTU
+
+2) **conntrack table 是否爆掉（或 entry 超時太短）**
+- 症狀：大量短連線/高併發時，conntrack drop 造成某些 node 間連線「看起來隨機」斷
+- 檢查（node 上）：`conntrack -S`、`sysctl net.netfilter.nf_conntrack_max`、`dmesg | egrep -i "conntrack|nf_conntrack"`
+
+3) **L4 LB / 中間設備的 idle timeout**（MetalLB/NLB/iptables/eBPF LB 都可能）
+- 症狀：固定一段時間後重設連線或 silent drop → 下一輪 ping 來不及更新
+- 檢查：確認 MinIO node-to-node endpoint 是否走 LB；盡量讓叢集內部走 podIP/nodeIP 直連，避免經過外部 LB
+
+> 如果你做完這三個檢查，仍然像是「對端忙」而不是網路，才回到本頁後續的 I/O/healing/scanner 排查。
+
+
 ### 超快判斷：這行 log 比較像「網路」還是「對端忙」？
 把 `canceling remote connection A:9000->B:9000 not seen for ~60s` 當作**症狀**，先用同一時間窗（T±5m）做 3 個 yes/no：
 
