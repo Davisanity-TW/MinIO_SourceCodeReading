@@ -22,6 +22,33 @@
 - 多數情況你會看到接近 `~60s`（=`lastPingThreshold = 4 * clientPingInterval = 4 * 15s`）。
 - 如果 `not seen for` 明顯偏離（例如只有幾秒就觸發、或突然跳到好幾分鐘），先把 **時鐘/NTP 跳動** 納入排查（`time.Since(time.Unix(LastPing,0))` 會受系統時間回撥/大幅校時影響）。
 
+## （新增）快速驗證：在你自己的 MinIO checkout 直接 grep 出這條 log 的印出點
+
+如果你在排查時不確定版本差異（例如是不是同一條 log、threshold 是否改過），最穩的方式是直接在「你正在跑的那個版本」做函式/字串 grep，把 anchor 釘死。
+
+```bash
+# 在你跑的 MinIO source tree（對應 release tag / commit）
+cd /path/to/minio
+
+# 直接找 log 字串（最不吃腦）
+grep -RIn "canceling remote connection" -n internal/grid cmd | head
+
+# 追到 mux server 的存活檢查/threshold
+grep -RIn "checkRemoteAlive" -n internal/grid | head
+grep -RIn "lastPingThreshold" -n internal/grid | head
+grep -RIn "clientPingInterval" -n internal/grid | head
+
+# 追到 ping 的 LastPing 更新點
+grep -RIn "OpPing" -n internal/grid | head
+grep -RIn "LastPing" -n internal/grid | head
+```
+
+> 你只要拿到 2 件事就足夠：
+> 1) 哪個 goroutine 在判定超時（通常是 `(*muxServer).checkRemoteAlive()`）
+> 2) threshold 的計算方式（多數版本是 `4 * clientPingInterval` → 約 60s）
+
+---
+
 ## TL;DR（10 分鐘內把方向定下來）
 
 ### （新增）Kubernetes/CNI 情境的 3 個快速檢查（最常踩雷）

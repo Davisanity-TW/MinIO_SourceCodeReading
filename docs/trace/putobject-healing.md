@@ -118,6 +118,38 @@ objInfo, err := putObject(ctx, bucket, object, pReader, opts)
 
 ---
 
+## （新增）PutObject 的 rename/commit 跟 Healing 的 RenameData() 是同一類磁碟操作
+
+PutObject 跟 Healing 最容易在 I/O 上「共振」的地方，是兩邊最後都會做 **rename/cutover 類型的原子切換**：
+
+- PutObject：`erasureObjects.putObject()` 會把 shard 先寫到暫存路徑，最後呼叫 `renameData()` / `commitRenameDataDir()` 把資料與 `xl.meta` 切換到正式 dataDir。
+  - 檔案：`cmd/erasure-object.go`
+  - 錨點（函式名）：`renameData(...)`、`commitRenameDataDir(...)`
+- Healing：`(*erasureObjects).healObject()` 會把重建後的 shard 先寫到 `.minio.sys/tmp`，最後呼叫 `StorageAPI.RenameData(...)` 把 tmp 內容切回正式 dataDir。
+  - 檔案：`cmd/erasure-healing.go`（呼叫點）
+  - 介面：`cmd/storage-interface.go` 的 `RenameData`
+  - 常見實作：`cmd/xl-storage.go` 的 `(*xlStorage).RenameData(...)`
+
+因此如果你現場看到：
+- Healing duration 變長、I/O await 飆高
+- 同時 PutObject latency 變差、甚至開始出現 `canceling remote connection`
+
+很常不是「網路先壞」，而是 **rename/fsync/metadata ops 把 disk 打滿 → grid ping handler 跟不上**。
+
+快速定位（避免行號飄）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# PutObject 的 rename
+grep -RIn "^func renameData" -n cmd/erasure-object.go
+grep -RIn "commitRenameDataDir" -n cmd/erasure-object.go
+
+# Healing 的 RenameData
+grep -RIn "RenameData\(" -n cmd/erasure-healing.go cmd/xl-storage.go cmd/storage-interface.go
+```
+
+---
+
 ## 1) PutObject：從 ObjectLayer 入口一路落到 erasureObjects.putObject()
 
 PutObject 在 distributed/erasure 架構下，常見的 call chain（按 receiver 層級拆）是：
