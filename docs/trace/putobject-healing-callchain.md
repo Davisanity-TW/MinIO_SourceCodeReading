@@ -22,11 +22,16 @@
 - `cmd/erasure-server-pool.go`
   - `func (z *erasureServerPools) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, opts ObjectOptions) (ObjectInfo, error)`
 
-3) ObjectLayer：sets
+3) ObjectLayer：單一 pool（實際會把 request 導到 sets）
+- `cmd/erasure-server-pool.go`
+  - `func (p *erasureServerPool) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, opts ObjectOptions) (ObjectInfo, error)`
+    - 常見語意：做 pool 內部的前置/轉派，最後落到 `p.sets.PutObject(...)`
+
+4) ObjectLayer：sets
 - `cmd/erasure-sets.go`
   - `func (s *erasureSets) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, opts ObjectOptions) (ObjectInfo, error)`
 
-4) ObjectLayer：objects（真正的 encode/tmp/rename/commit）
+5) ObjectLayer：objects（真正的 encode/tmp/rename/commit）
 - `cmd/erasure-object.go`
   - `func (er erasureObjects) PutObject(...) (ObjectInfo, error)`（wrapper）
   - `func (er erasureObjects) putObject(...) (ObjectInfo, error)`（主流程）
@@ -99,6 +104,7 @@ git rev-parse --short HEAD
 # PutObject handler → object layer
 grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
 grep -RIn "func (z \\*erasureServerPools) PutObject" -n cmd/erasure-server-pool.go
+grep -RIn "func (p \\*erasureServerPool) PutObject" -n cmd/erasure-server-pool.go
 grep -RIn "func (s \\*erasureSets) PutObject" -n cmd/erasure-sets.go
 grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
 
