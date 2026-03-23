@@ -71,6 +71,40 @@ objInfo, err := putObject(ctx, bucket, object, pReader, opts)
     - RS rebuild：`erasure.Heal(...)`
     - 寫回切換點：`disk.RenameData(...)`（interface：`StorageAPI.RenameData` / 實作：`(*xlStorage).RenameData`）
 
+### 0.2.1（補）MRF healRoutine → HealObject → healObject 的「最短可釘死」grep 錨點
+
+> 目的：你在 incident note 想把 **PutObject 留 partial → MRF queue → 背景 healObject** 的整條鏈用「一串 grep」釘死，避免版本/行號漂移。
+
+在你自己的 MinIO source tree（`/path/to/minio`）直接跑：
+
+```bash
+cd /path/to/minio
+
+# PutObject 留 partial（enqueue）
+grep -n "func (er erasureObjects) addPartial" -n cmd/erasure-object.go
+grep -n "globalMRFState.addPartialOp" -n cmd/erasure-object.go
+
+# MRF queue 入口 + non-blocking drop 行為
+grep -n "func (m \*mrfState) addPartialOp" -n cmd/mrf.go
+
+# MRF 背景消費（出隊 → 呼叫 healObject helper）
+grep -n "func (m \*mrfState) healRoutine" -n cmd/mrf.go
+grep -n "func healObject" -n cmd/mrf.go
+
+# ObjectLayer HealObject 層級（最常需要在這裡看 lock/選 pool/選 set）
+grep -n "func (z \*erasureServerPools) HealObject" -n cmd/erasure-server-pool.go
+grep -n "func (s \*erasureSets) HealObject" -n cmd/erasure-sets.go
+
+# 真正做 RS 重建 + RenameData() 的地方
+grep -n "func (er erasureObjects) HealObject" -n cmd/erasure-healing.go
+grep -n "^func (er \*erasureObjects) healObject" -n cmd/erasure-healing.go
+```
+
+你最後在文內最常引用的關鍵點通常只有三句：
+- `addPartial()` enqueue 的地方（PutObject quorum 過但缺片）
+- `mrfState.addPartialOp()` 的 `select { default: }`（queue 滿會 drop）
+- `(*mrfState).healRoutine()` 出隊後最終走到 `(*erasureObjects).healObject()`（RS rebuild + `RenameData()` 寫回）
+
 > 實務用法：看到「PutObject latency 變差 + healing 變多」時，先用上面這張圖把兩條線接起來（多半是 quorum 仍達成但留下 partial → MRF 開始補洞）。
 
 ## 0.3 healObject() 內部「真的重建 + 寫回」的呼叫鏈（補精準函式/檔案）

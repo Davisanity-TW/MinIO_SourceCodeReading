@@ -1,3 +1,5 @@
+- 2026-03-23 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 補上 MRF healRoutine → HealObject → `healObject()` 的「最短可釘死」grep 錨點（避免行號漂移）；Troubleshooting：`canceling remote connection` 補上常見共現錯誤（`ErrDisconnected` 等）與對應筆記連結。
+
 - 2026-03-23 06:01：Trace：PutObject vs Healing 補上 PutObject rename/commit 與 Healing RenameData 的 I/O 共振對照與 grep 錨點；Troubleshooting：`canceling remote connection` 補上在本機 checkout 直接 grep 釘 log/threshold/ping 錨點的小節。
 
 - 2026-03-22 14:00（Asia/Taipei）：Trace：補強 `putobject-healing.md` 的 `RenameData()` 實作錨點（`StorageAPI.RenameData` → `xlStorage.RenameData`）與底層行為提示；Troubleshooting：`canceling remote connection` 新增 Kubernetes/CNI 的 MTU/conntrack/idle-timeout 三件套快速檢查。

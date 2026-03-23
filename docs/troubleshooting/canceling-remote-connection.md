@@ -1,6 +1,8 @@
 # Error: canceling remote connection（可能原因與排查方向）
 
 > 這個訊息不是 S3 client 端的錯誤本體，而是 **MinIO server 內部的 inter-node RPC（grid）** 在判定「對端連線不健康」時，主動切斷遠端連線的 log。
+>
+> 常一起出現/被誤認的訊息：`grid: ErrDisconnected` / `connection reset by peer` / `i/o timeout`（可搭配閱讀：`docs/troubleshooting/grid-errdisconnected.md`）。
 
 ## Code anchors（先把「哪裡印的 / 看的是什麼 timestamp」釘死）
 以 upstream MinIO `master`（GitHub raw/檔名與函式名）為準（行號可能因版本不同而漂移），這行 log 的最短關聯鏈是：
