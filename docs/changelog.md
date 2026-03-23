@@ -1,3 +1,5 @@
+- 2026-03-23 22:00（Asia/Taipei）：Trace：新增 `docs/trace/putobject-healing-callchain.md`（PutObject / Healing / MRF / RenameData 的最短呼叫鏈速查 + 一鍵 grep 錨點）。
+
 - 2026-03-23 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 補上 MRF healRoutine → HealObject → `healObject()` 的「最短可釘死」grep 錨點（避免行號漂移）；Troubleshooting：`canceling remote connection` 補上常見共現錯誤（`ErrDisconnected` 等）與對應筆記連結。
 
 - 2026-03-23 06:01：Trace：PutObject vs Healing 補上 PutObject rename/commit 與 Healing RenameData 的 I/O 共振對照與 grep 錨點；Troubleshooting：`canceling remote connection` 補上在本機 checkout 直接 grep 釘 log/threshold/ping 錨點的小節。
