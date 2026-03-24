@@ -36,13 +36,44 @@
   - `func (er erasureObjects) PutObject(...) (ObjectInfo, error)`（wrapper）
   - `func (er erasureObjects) putObject(...) (ObjectInfo, error)`（主流程）
 
-### 1.2 putObject() 內部最關鍵的三個切點（常拿來下斷點/插 trace）
+### 1.2 PutObjectHandler() 內部：HTTP 參數/reader pipeline → ObjectOptions → ObjectLayer.PutObject
+
+> 這段是把「PutObject handler 到底做了哪些前置」釘成可 grep 的錨點；方便你在 incident 時快速分辨問題是卡在 **HTTP/驗證/reader pipeline** 還是 **底層 erasure 寫入**。
+
+- `cmd/object-handlers.go`
+  - `func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Request)`
+
+常見（且跨版本相對穩定）的關鍵呼叫點：
+- metadata：`extractMetadataFromReq(ctx, r)`
+- authz：`isPutActionAllowed(..., policy.PutObjectAction)`
+- quota：`enforceBucketQuotaHard(ctx, bucket, size)`
+- chunked reader：`newSignV4ChunkedReader(...)` / `newUnsignedV4ChunkedReader(...)`
+- hash/etag/checksum：`hash.NewReaderWithOpts(...)` + `hashReader.AddChecksum(...)` → `NewPutObjReader(hashReader)`
+- options：`putOptsFromReq(ctx, r, bucket, object, metadata)`
+- 最終：`objectAPI.PutObject(ctx, bucket, object, pReader, opts)`
+
+```bash
+cd /path/to/minio
+
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+
+grep -RIn "extractMetadataFromReq\(" -n cmd/object-handlers.go
+grep -RIn "isPutActionAllowed" -n cmd/object-handlers.go
+grep -RIn "enforceBucketQuotaHard" -n cmd/object-handlers.go
+
+grep -RIn "newSignV4ChunkedReader" -n cmd/object-handlers.go
+grep -RIn "NewPutObjReader\(" -n cmd/object-handlers.go
+
+grep -RIn "putOptsFromReq\(" -n cmd/object-handlers.go
+```
+
+### 1.3 putObject() 內部最關鍵的三個切點（常拿來下斷點/插 trace）
 
 - encode：`erasure.Encode(...)`
 - tmp → 正式 dataDir：`renameData(...)`
 - commit（切換 DataDir / 對外可見）：`commitRenameDataDir(...)`
 
-### 1.3 PutObject 成功但留下缺片（partial）→ 丟進 MRF queue
+### 1.4 PutObject 成功但留下缺片（partial）→ 丟進 MRF queue
 
 - `cmd/erasure-object.go`
   - `func (er erasureObjects) addPartial(bucket, object, versionID string)`

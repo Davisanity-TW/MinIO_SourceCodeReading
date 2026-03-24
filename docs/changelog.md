@@ -1,3 +1,5 @@
+- 2026-03-24 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 `PutObjectHandler()` 內部的 reader/options pipeline（extractMetadata/isPutActionAllowed/quota/chunked reader/hash/NewPutObjReader/putOptsFromReq）grep 錨點，方便把「handler 前置」與「底層 erasure 寫入」分開定位。
+
 - 2026-03-24 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 `erasureServerPool.PutObject()` 這層（pool 內轉派到 sets），讓 PutObject 呼叫鏈更完整可對齊。
 
 - 2026-03-23 22:00（Asia/Taipei）：Trace：新增 `docs/trace/putobject-healing-callchain.md`（PutObject / Healing / MRF / RenameData 的最短呼叫鏈速查 + 一鍵 grep 錨點）。
