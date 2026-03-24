@@ -67,11 +67,27 @@ grep -RIn "NewPutObjReader\(" -n cmd/object-handlers.go
 grep -RIn "putOptsFromReq\(" -n cmd/object-handlers.go
 ```
 
-### 1.3 putObject() 內部最關鍵的三個切點（常拿來下斷點/插 trace）
+### 1.3 putObject() 內部最關鍵的切點（常拿來下斷點/插 trace）
 
-- encode：`erasure.Encode(...)`
-- tmp → 正式 dataDir：`renameData(...)`
-- commit（切換 DataDir / 對外可見）：`commitRenameDataDir(...)`
+> 目的：把「PutObject 寫入」在 erasure 層最吃 I/O、也最常跟 MRF/Healing 共振的切點釘死。
+
+- **encode + 寫 tmp**：`erasure.Encode(...)`
+  - writer：`newBitrotWriter(...)`（寫到 `.minio.sys/tmp/<tmpID>/<dataDir>/part.N`）
+- **tmp → 正式 dataDir**：`renameData(...)`
+- **commit（切換 DataDir / 對外可見）**：`commitRenameDataDir(...)`
+
+你要在 code 裡最快定位（避免行號漂移）：
+```bash
+cd /path/to/minio
+
+grep -n "func (er erasureObjects) putObject" cmd/erasure-object.go
+
+grep -n "newBitrotWriter(" cmd/erasure-object.go | head -n 50
+grep -n "\\.Encode(ctx" cmd/erasure-object.go | head -n 50
+
+grep -n "^func renameData" cmd/erasure-object.go
+grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 50
+```
 
 ### 1.4 PutObject 成功但留下缺片（partial）→ 丟進 MRF queue
 
@@ -108,7 +124,54 @@ grep -RIn "putOptsFromReq\(" -n cmd/object-handlers.go
 - `cmd/erasure-healing.go`
   - `func (er erasureObjects) HealObject(ctx context.Context, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
   - `func (er *erasureObjects) healObject(ctx context.Context, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
-    - 核心 I/O：`readAllFileInfo(...)` / `erasure.Heal(...)` / `disk.RenameData(...)`
+
+### 2.4（補）`healObject()` 內部最短「可釘死」步驟鏈：read meta → 算 quorum → RS rebuild → RenameData
+
+> 目的：把真正最吃 I/O 的 heal 路徑補到「實際函式名」，讓你在 incident 時可以很快回答：
+> - 卡在 metadata fan-out？（`readAllFileInfo`）
+> - 卡在 RS 重建？（`erasure.Heal`）
+> - 卡在寫回/rename？（`disk.RenameData` / `xlStorage.RenameData`）
+
+在 `cmd/erasure-healing.go: (*erasureObjects).healObject()`（不同版本可能拆檔，但函式名通常穩定）你會反覆看到這組關鍵點：
+
+1) metadata fan-out（讀 `xl.meta`）
+- `readAllFileInfo(...)`
+
+2) quorum/選 meta reference（決定以哪份 `xl.meta` 當準）
+- `objectQuorumFromMeta(...)`
+- `listOnlineDisks(...)`
+- `pickValidFileInfo(...)`
+- `disksWithAllParts(...)`
+
+3) 建 RS encoder
+- `NewErasure(...)`
+
+4) 逐 part RS 重建 + 寫 `.minio.sys/tmp`
+- reader：`newBitrotReader(...)`
+- writer：`newBitrotWriter(...)`（寫 `.minio.sys/tmp/<tmpID>/<dstDataDir>/part.N`）
+- rebuild：`erasure.Heal(...)`
+
+5) 原子寫回（tmp → 正式）
+- `disk.RenameData(...)`（storage 介面）
+  - 常見實作：`cmd/xl-storage.go: (*xlStorage).RenameData(...)`
+
+一鍵 grep（在你跑的版本把錨點釘死）：
+```bash
+cd /path/to/minio
+
+grep -RIn "^func (er \\*erasureObjects) healObject" -n cmd | head
+
+grep -RIn "readAllFileInfo\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+grep -RIn "objectQuorumFromMeta\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+grep -RIn "pickValidFileInfo\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+grep -RIn "disksWithAllParts\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+
+grep -RIn "newBitrotReader\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+grep -RIn "newBitrotWriter\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+grep -RIn "\\.Heal(ctx" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+
+grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/erasure-healing.go | head -n 80
+```
 
 ---
 

@@ -1,3 +1,7 @@
+- 2026-03-25 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補齊兩段「最短可釘死」內部流程：
+  - PutObject：補上 `.minio.sys/tmp` writer（`newBitrotWriter`）→ `erasure.Encode` → `renameData` → `commitRenameDataDir` 的 grep 錨點
+  - Healing：補上 `healObject()` 內 `readAllFileInfo` → `objectQuorumFromMeta`/`pickValidFileInfo`/`disksWithAllParts` → `NewErasure` → `erasure.Heal` → `disk.RenameData`（`xlStorage.RenameData`）的 grep 錨點
+
 - 2026-03-24 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 `PutObjectHandler()` 內部的 reader/options pipeline（extractMetadata/isPutActionAllowed/quota/chunked reader/hash/NewPutObjReader/putOptsFromReq）grep 錨點，方便把「handler 前置」與「底層 erasure 寫入」分開定位。
 
 - 2026-03-24 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 `erasureServerPool.PutObject()` 這層（pool 內轉派到 sets），讓 PutObject 呼叫鏈更完整可對齊。
