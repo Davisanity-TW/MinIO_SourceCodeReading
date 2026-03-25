@@ -229,3 +229,33 @@ grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/eras
 - **背景補洞把 I/O 拉高**：`MRF healRoutine` 或 `scanner applyHealing` → `HealObject()` → `healObject()` → `erasure.Heal()` + `RenameData()`。
 
 如果同時間又看到 `canceling remote connection ... not seen for ~60s`，很常是「背景 I/O/排程壓力 → grid ping handler 延遲」的結果（見 troubleshooting 頁）。
+
+---
+
+## 6)（補）把 `canceling remote connection` 也釘進同一張 call chain（grid ping/pong 的 code anchors）
+
+> 目的：在 incident 時把「PutObject/MRF/Healing 造成 I/O 壓力」與「grid 心跳超時斷線」用**可 grep 的 code 錨點**接起來。
+
+- 觸發 log / server 端 watchdog：`minio/internal/grid/muxserver.go`
+  - `(*muxServer).checkRemoteAlive()`：`time.Since(time.Unix(LastPing,0)) > lastPingThreshold` → 印 `canceling remote connection ... not seen for ...` → `m.close()`
+- 閾值計算（通常固定 ~60s）：
+  - `minio/internal/grid/grid.go`：`clientPingInterval = 15 * time.Second`
+  - `minio/internal/grid/muxserver.go`：`lastPingThreshold = 4 * clientPingInterval`
+- `LastPing` 更新點（server 收到 ping）：`minio/internal/grid/muxserver.go`
+  - `(*muxServer).ping(...)`：`atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
+
+一鍵 grep（對你線上跑的那個版本把錨點釘死）：
+```bash
+cd /path/to/minio
+
+grep -RIn "canceling remote connection" -n internal/grid | head
+
+grep -RIn "checkRemoteAlive" -n internal/grid/muxserver.go internal/grid/muxclient.go | head
+
+grep -RIn "clientPingInterval" -n internal/grid | head
+grep -RIn "lastPingThreshold" -n internal/grid | head
+
+grep -RIn "LastPing" -n internal/grid/muxserver.go | head
+```
+
+> 實務判讀：當同一時間窗 healing/MRF 很忙、或磁碟 latency 飆高時，grid 的 ping handler 也可能因排程/I/O 阻塞而延遲，最後表現成這條 log。

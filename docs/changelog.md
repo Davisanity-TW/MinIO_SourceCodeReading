@@ -1,3 +1,5 @@
+- 2026-03-25 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 grid 心跳斷線（`canceling remote connection`）的最短 code anchors（`muxserver.checkRemoteAlive`/`LastPing`/`clientPingInterval`/`lastPingThreshold`），方便跟 PutObject/MRF/Healing 的 I/O 壓力共振對齊。
+
 - 2026-03-25 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補齊兩段「最短可釘死」內部流程：
   - PutObject：補上 `.minio.sys/tmp` writer（`newBitrotWriter`）→ `erasure.Encode` → `renameData` → `commitRenameDataDir` 的 grep 錨點
   - Healing：補上 `healObject()` 內 `readAllFileInfo` → `objectQuorumFromMeta`/`pickValidFileInfo`/`disksWithAllParts` → `NewErasure` → `erasure.Heal` → `disk.RenameData`（`xlStorage.RenameData`）的 grep 錨點
