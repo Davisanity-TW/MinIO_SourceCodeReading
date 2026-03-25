@@ -175,6 +175,32 @@ grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/eras
 
 ---
 
+## 2.5（補）MRF 的 `healObject()` helper 也要釘死：它怎麼包 `HealObject()`
+
+> 目的：很多現場筆記只記到「MRF healRoutine 會呼叫 HealObject」，但你真正想知道的是：
+> - `healRoutine()` 出隊後到底怎麼組 `HealObject` 的參數？（bucket/object/versionID/opts）
+> - 它在什麼情況會 skip / retry / sleep？
+>
+> 這段通常在 `cmd/mrf.go` 內，以 helper function 的形式存在（版本可能略有差異，但 `healObject` 這個名字常見）。
+
+- `cmd/mrf.go`
+  - `func (m *mrfState) healRoutine(z *erasureServerPools)`（consumer loop）
+  - `func healObject(ctx context.Context, z *erasureServerPools, bucket, object, versionID string, scanMode madmin.HealScanMode) error`
+    - 內部會呼叫：`z.HealObject(ctx, bucket, object, versionID, healOpts)`
+    - 常見會設定：`healOpts.ScanMode = scanMode`、以及 `healOpts.Remove/Recursive/DryRun` 等（依版本）
+
+一鍵釘死（對你跑的版本）：
+```bash
+cd /path/to/minio
+
+grep -RIn "func (m \\*mrfState) healRoutine" -n cmd/mrf.go
+grep -RIn "func healObject" -n cmd/mrf.go
+
+grep -RIn "HealObject\\(" -n cmd/mrf.go | head -n 50
+```
+
+> 實務用法：你在 incident note 只要貼出 `cmd/mrf.go` 裡 `healObject()` 那段 `HealObject()` 呼叫，就能把「MRF 觸發的 heal」跟「scanner/人工觸發的 heal」在 code 上區分開。
+
 ## 3) Storage 層的「原子切換點」：RenameData
 
 PutObject 與 Healing 最容易共振的點：兩者最後都會落到 storage rename/cutover 類型操作。
