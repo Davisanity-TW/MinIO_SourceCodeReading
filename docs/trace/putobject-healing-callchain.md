@@ -235,6 +235,33 @@ PutObject 與 Healing 最容易共振的點：兩者最後都會落到 storage r
 - 常見實作：`cmd/xl-storage.go`
   - `func (s *xlStorage) RenameData(ctx context.Context, srcBucket, srcEntry string, fi FileInfo, dstBucket, dstEntry string, opts RenameOptions) error`
 
+### 3.1（補）PutObject vs Healing：最後的「commit/可見性切換點」其實長得不一樣
+
+同樣都是「tmp → 正式路徑」的安全提交模型，但 PutObject 與 Healing 在 code 上的 commit 點不同：
+
+- **PutObject（object layer 主導）**：`cmd/erasure-object.go`
+  - `renameData(...)`：把 `.minio.sys/tmp/<tmpID>/<dataDir>/part.N` 轉到 `<bucket>/<object>/<dataDir>/part.N`
+  - `commitRenameDataDir(...)`：完成 DataDir/version 的切換（對外可見性切換點）
+
+- **Healing（storage layer 逐 disk commit）**：`cmd/erasure-healing.go`
+  - `disk.RenameData(...)`：把 `.minio.sys/tmp/<tmpID>/<dstDataDir>/part.N` 逐顆 disk rename 回 `<bucket>/<object>/<dstDataDir>/part.N`
+
+> 實務判讀：
+> - 「PutObject 很慢」且卡在最後：優先看 `renameData()` / `commitRenameDataDir()`（大量 rename/fsync）
+> - 「Healing 很慢」且 CPU 不高：優先看 `StorageAPI.RenameData()` 的 I/O latency（底層檔案系統/磁碟/metadata lock）
+
+一鍵釘死（對你跑的版本）：
+```bash
+cd /path/to/minio
+
+# PutObject 的 commit 點
+grep -n "^func renameData" cmd/erasure-object.go
+grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 50
+
+# Healing 的 commit 點（storage rename）
+grep -RIn "RenameData\(" -n cmd/erasure-healing.go cmd/storage-interface.go cmd/xl-storage.go | head -n 80
+```
+
 ---
 
 ## 4) 一鍵 grep：在你跑的 MinIO 版本把錨點釘死（避免行號漂移）

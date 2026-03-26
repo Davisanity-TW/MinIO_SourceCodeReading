@@ -1,3 +1,5 @@
+- 2026-03-27 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補一節「PutObject vs Healing 的 commit/可見性切換點差異」：PutObject 走 `renameData()`+`commitRenameDataDir()`；Healing 走 `StorageAPI.RenameData()`，並附一鍵 grep。
+
 - 2026-03-26 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 新增 Admin API（`/minio/admin/v3/heal/*`）→ `adminAPIHandlers.HealHandler()` 的 code anchors + 一鍵 grep，讓「手動/工具觸發 heal」可跟 MRF/scanner 來源分開判讀。
 
 - 2026-03-25 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 追加 MRF `healObject()` helper 的 code anchors + 一鍵 grep（把「MRF 出隊後怎麼包 HealObject()」釘死）。
