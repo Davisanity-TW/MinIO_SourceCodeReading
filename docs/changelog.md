@@ -1,3 +1,5 @@
+- 2026-03-26 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 新增 Admin API（`/minio/admin/v3/heal/*`）→ `adminAPIHandlers.HealHandler()` 的 code anchors + 一鍵 grep，讓「手動/工具觸發 heal」可跟 MRF/scanner 來源分開判讀。
+
 - 2026-03-25 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 追加 MRF `healObject()` helper 的 code anchors + 一鍵 grep（把「MRF 出隊後怎麼包 HealObject()」釘死）。
 
 - 2026-03-25 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 grid 心跳斷線（`canceling remote connection`）的最短 code anchors（`muxserver.checkRemoteAlive`/`LastPing`/`clientPingInterval`/`lastPingThreshold`），方便跟 PutObject/MRF/Healing 的 I/O 壓力共振對齊。

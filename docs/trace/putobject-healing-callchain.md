@@ -115,6 +115,31 @@ grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 50
   - `func (i *scannerItem) applyHealing(ctx context.Context, o ObjectLayer, oi ObjectInfo) (size int64)`
     - `o.HealObject(ctx, bucket, object, versionID, healOpts)`
 
+### 2.2.1 Admin API（手動/工具觸發）→ HealHandler → HealObject
+
+> 目的：把你在現場常用的 `mc admin heal ...`（或 Console/自動化呼叫 admin heal API）對回實際 server handler；避免把「手動 heal」跟「MRF/scanner 自動 heal」混在一起。
+
+- Admin router：`cmd/admin-router.go`
+  - `POST /minio/admin/v3/heal/`、`/heal/{bucket}`、`/heal/{bucket}/{prefix:.*}` → `adminAPIHandlers.HealHandler`
+- Admin handler：`cmd/admin-handlers.go`
+  - `func (a adminAPIHandlers) HealHandler(w http.ResponseWriter, r *http.Request)`
+  - 解析 request 後，最終仍會落到 ObjectLayer 的 `HealObject(...)`（同一條 healing 主線）
+
+快速定位（在你跑的 MinIO 版本把 API ↔ handler ↔ ObjectLayer 錨點釘死）：
+```bash
+cd /path/to/minio
+
+grep -RIn "HealHandler" -n cmd/admin-handlers.go cmd/admin-router.go | head -n 50
+
+grep -RIn "func \(a adminAPIHandlers\) HealHandler" -n cmd/admin-handlers.go
+
+grep -RIn "HealObject\(" -n cmd/admin-handlers.go | head -n 80
+```
+
+（背景 heal 狀態查詢也常一起用）
+- `cmd/admin-handlers.go`：`BackgroundHealStatusHandler`
+- `cmd/peer-rest-server.go`：`BackgroundHealStatusHandler`（peer/grid RPC）
+
 ### 2.3 HealObject 的正式 ObjectLayer call chain（pool → sets → objects → healObject）
 
 - `cmd/erasure-server-pool.go`
