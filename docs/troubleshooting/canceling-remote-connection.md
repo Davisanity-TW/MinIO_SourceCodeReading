@@ -40,6 +40,10 @@ grep -RIn "checkRemoteAlive" -n internal/grid | head
 grep -RIn "lastPingThreshold" -n internal/grid | head
 grep -RIn "clientPingInterval" -n internal/grid | head
 
+# （補）checkRemoteAlive 是在哪個 goroutine/loop 被呼叫？
+# 這能幫你判斷：它是不是「固定週期 tick」檢查，或是「連線事件」驅動。
+grep -RIn "checkRemoteAlive\(" -n internal/grid | head -n 50
+
 # 追到 ping 的 LastPing 更新點
 grep -RIn "OpPing" -n internal/grid | head
 grep -RIn "LastPing" -n internal/grid | head
