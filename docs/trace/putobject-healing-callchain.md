@@ -140,6 +140,40 @@ grep -RIn "HealObject\(" -n cmd/admin-handlers.go | head -n 80
 - `cmd/admin-handlers.go`：`BackgroundHealStatusHandler`
 - `cmd/peer-rest-server.go`：`BackgroundHealStatusHandler`（peer/grid RPC）
 
+### 2.2.2（新增）當 Healing 需要跨節點：Peer REST（grid）怎麼把 HealObject 分派到 peer
+
+> 目的：你在現場常看到「某個 node 很忙/很慢」但 heal/trace 看起來是從別的節點發起；這時候把 **peer REST（grid RPC）** 的 client/server 錨點釘死，就能更快回答：
+> - 是不是透過 grid 把 heal request 轉發到某個 peer？
+> - 哪個 handler 在 peer 端處理？
+> - 為什麼會跟 `canceling remote connection`（streaming mux watchdog）同時間出現？
+
+典型結構（跨版本相對穩定的檔名/概念）：
+- **server 端（peer 端接收）**：`cmd/peer-rest-server.go`
+  - 會註冊多個 peer REST handler（含 background heal status / heal 相關 RPC）
+- **client 端（發起端呼叫 peer）**：`cmd/peer-rest-client.go`
+  - 會用 grid connection 對 peer 打 RPC
+
+一鍵釘死（對你跑的版本）：
+```bash
+cd /path/to/minio
+
+# peer REST server/client 的入口檔案
+ls cmd/peer-rest-*.go
+
+# 找 heal/background heal/status 相關的 handler/route（不同版本命名略有差）
+grep -RIn "BackgroundHealStatus" -n cmd/peer-rest-server.go cmd/peer-rest-client.go | head -n 50
+
+grep -RIn "Heal" -n cmd/peer-rest-server.go cmd/peer-rest-client.go | head -n 120
+
+# 如果你是想把「grid 連線心跳」跟「peer REST RPC 很忙」關聯起來：
+# 直接在 internal/grid 找 streaming mux 的 watchdog（server 端 ~60s 沒 ping）
+grep -RIn "canceling remote connection" -n internal/grid | head
+```
+
+> 實務判讀：
+> - Healing/MRF/scanner 若造成大量跨節點 RPC（peer REST），會放大 grid streaming mux 的壓力；
+> - 這時 `canceling remote connection` 往往是「結果」（心跳/handler 排隊/網路丟包），不是根因。
+
 ### 2.3 HealObject 的正式 ObjectLayer call chain（pool → sets → objects → healObject）
 
 - `cmd/erasure-server-pool.go`

@@ -19,6 +19,8 @@
   - `minio/internal/grid/muxserver.go`：`(*muxServer).ping()` → `atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
 
 > 判讀重點：這條 log 的語意是「server 端在 ~60s 內沒看到（或沒能處理到）remote 的 ping」；原因可能是封包沒到（網路）或 handler 跑不動（I/O/CPU/GC/背景任務）。
+>
+> （新增）這個 watchdog 針對的是 **streaming mux（MuxID != 0）**；實務上它常承載 peer REST（grid RPC）這類跨節點長連線/串流流量，所以在 Healing/MRF/scanner 很忙時更容易一起出現。
 
 **快速 sanity check：`not seen for` 的時間是否「明顯不是 ~60s」？**
 - 多數情況你會看到接近 `~60s`（=`lastPingThreshold = 4 * clientPingInterval = 4 * 15s`）。

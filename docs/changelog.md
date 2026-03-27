@@ -1,3 +1,5 @@
+- 2026-03-28 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補一節「Healing 跨節點時的 Peer REST（grid RPC）client/server 錨點」；Troubleshooting：`canceling remote connection` 補上「streaming mux 常承載 peer REST」的判讀提示。
+
 - 2026-03-27 14:00（Asia/Taipei）：Troubleshooting：`canceling remote connection` 補上「checkRemoteAlive 是在哪個 goroutine/loop 被呼叫」的 grep 提示，方便判斷它是週期 tick 檢查或連線事件驅動。
 
 - 2026-03-27 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補一節「PutObject vs Healing 的 commit/可見性切換點差異」：PutObject 走 `renameData()`+`commitRenameDataDir()`；Healing 走 `StorageAPI.RenameData()`，並附一鍵 grep。
