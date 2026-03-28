@@ -1,3 +1,5 @@
+- 2026-03-28 14:00（Asia/Taipei）：Trace：新增 `docs/trace/peer-rest-healing.md`，整理 peer REST（grid RPC）與 healing/scanner 的 grep 錨點，方便把 `canceling remote connection` 與跨節點 RPC 壓力一起對齊。
+
 - 2026-03-28 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補一節「Healing 跨節點時的 Peer REST（grid RPC）client/server 錨點」；Troubleshooting：`canceling remote connection` 補上「streaming mux 常承載 peer REST」的判讀提示。
 
 - 2026-03-27 14:00（Asia/Taipei）：Troubleshooting：`canceling remote connection` 補上「checkRemoteAlive 是在哪個 goroutine/loop 被呼叫」的 grep 提示，方便判斷它是週期 tick 檢查或連線事件驅動。
