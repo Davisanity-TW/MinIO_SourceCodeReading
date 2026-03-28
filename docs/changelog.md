@@ -1,3 +1,5 @@
+- 2026-03-29 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 client 端（~30s 沒 pong） vs server 端（~60s 沒 ping）兩種 watchdog 的差異與 grep 錨點；Troubleshooting：`canceling remote connection` 的 TL;DR 新增「先釐清是 client 30s 還是 server 60s」的排查提示。
+
 - 2026-03-28 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補強 PutObject partial → MRF queue drop 的實際檔案/函式/grep 錨點；Troubleshooting：`canceling remote connection` 新增「快速判斷網路掉包 vs 對端忙到 ping handler 跑不動」的佐證清單（pprof/metrics/網路 counters）。
 
 - 2026-03-28 14:00（Asia/Taipei）：Trace：新增 `docs/trace/peer-rest-healing.md`，整理 peer REST（grid RPC）與 healing/scanner 的 grep 錨點，方便把 `canceling remote connection` 與跨節點 RPC 壓力一起對齊。

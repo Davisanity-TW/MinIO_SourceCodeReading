@@ -59,6 +59,14 @@ grep -RIn "LastPing" -n internal/grid | head
 
 ## TL;DR（10 分鐘內把方向定下來）
 
+### 先釐清：你看到的是「server 端 60s watchdog」不是「client 端 30s watchdog」
+同一套 grid 心跳在 client/server 兩端都有保護機制，因此同一個 incident 常會出現兩種不同的訊號：
+- **client 端**：`ErrDisconnected`（常見 ~30s = `clientPingInterval*2` 沒看到 `LastPong`）
+- **server 端**：`canceling remote connection ... not seen for ~60s`（常見 ~60s = `lastPingThreshold = 4*clientPingInterval` 沒看到 `LastPing`）
+
+所以排查時務必「兩邊 log/trace 都看」：只看其中一邊很容易把因果關係倒過來。
+
+
 ### （新增）Kubernetes/CNI 情境的 3 個快速檢查（最常踩雷）
 如果 MinIO 跑在 Kubernetes（或經過 overlay/NAT），這條 log 很常跟「封包走得太繞 + conntrack/MTU/idle timeout」一起出現。先用最便宜的 3 個檢查把雷排掉：
 

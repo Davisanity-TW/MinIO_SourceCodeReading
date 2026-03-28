@@ -372,6 +372,27 @@ grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/eras
 - `LastPing` 更新點（server 收到 ping）：`minio/internal/grid/muxserver.go`
   - `(*muxServer).ping(...)`：`atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
 
+### 6.1（補）client 端也有 watchdog：30s 沒看到 pong 會先斷（常見伴隨 ErrDisconnected）
+
+很多現場會先看到 client 端（發起端）報 `ErrDisconnected`，但 server 端稍後才印出 `canceling remote connection ... not seen for ~60s`。原因是：
+- **client 端**通常在 `~30s`（`clientPingInterval*2`）沒收到 `LastPong` 更新就會主動斷線
+- **server 端**在 `~60s`（`lastPingThreshold = 4*clientPingInterval`）沒看到 `LastPing` 更新才會印出這條 log
+
+可釘死的 code anchors（以檔名/函式名為主）：
+- `minio/internal/grid/muxclient.go`
+  - `(*muxClient).handleOneWayStream()`：若 `time.Since(LastPong) > clientPingInterval*2` → `ErrDisconnected`
+  - `(*muxClient).sendPing()` / `(*muxClient).ping()`（不同版本命名略有差）
+
+一鍵 grep：
+```bash
+cd /path/to/minio
+
+grep -RIn "clientPingInterval" -n internal/grid | head
+
+grep -RIn "LastPong" -n internal/grid/muxclient.go | head -n 50
+grep -RIn "ErrDisconnected" -n internal/grid/muxclient.go internal/grid/connection.go | head -n 80
+```
+
 一鍵 grep（對你線上跑的那個版本把錨點釘死）：
 ```bash
 cd /path/to/minio
