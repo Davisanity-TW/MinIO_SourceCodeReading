@@ -95,7 +95,23 @@ grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 50
   - `func (er erasureObjects) addPartial(bucket, object, versionID string)`
     - `globalMRFState.addPartialOp(partialOperation{...})`
 
+- `cmd/mrf.go`
+  - `type partialOperation struct { ... }`（bucket/object/versionID 等欄位）
+  - `func (m *mrfState) addPartialOp(op partialOperation)`
+    - `select { case m.opCh <- op: default: }`
+    - **重點：queue 滿會 drop，不會 block PutObject**（所以你會看到「洞存在，但 heal 沒立刻追上」的情境）
+
 > 實務語意：PutObject 只要 quorum 過了就可能回成功；如果當下某些 disks offline（或 versions disparity），就會留下 partial，交由背景機制（MRF/scanner/healing）補洞。
+
+一鍵釘死（對你跑的版本）：
+```bash
+cd /path/to/minio
+
+grep -n "func (er erasureObjects) addPartial" cmd/erasure-object.go
+
+grep -n "type partialOperation" cmd/mrf.go
+grep -n "func (m \\*mrfState) addPartialOp" cmd/mrf.go
+```
 
 ---
 

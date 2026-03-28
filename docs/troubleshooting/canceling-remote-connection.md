@@ -702,6 +702,26 @@ sysctl net.netfilter.nf_conntrack_count net.netfilter.nf_conntrack_max
 
 如果你有集中式 log（Loki/ELK），這招通常比只盯著單一訊息快很多。
 
+### 4.1.1)（新增）如何快速判斷是「網路掉包」還是「對端忙到 ping handler 跑不動」？
+把 `canceling remote connection` 當成「server 端超過 threshold 沒更新 `LastPing`」，根因最常見兩類：
+
+A) **網路層/傳輸層問題（ping 真的沒到）**
+- 同時間窗你常會看到：TCP retrans/dup ack、overlay/CNI drop、conntrack 壓力、MTU mismatch、跨 AZ latency 抖動
+- 佐證方式：
+  - node 的 `ss -ti` / `netstat -s`（retrans 計數）
+  - CNI/網卡/交換器 counter（drop/error）
+  - 若是 K8s：同時間看 `kube-proxy`/CNI logs + conntrack usage
+
+B) **server 端資源/排程問題（ping 到了，但 handler 沒被排到）**
+- 常見共振：healing/scanner/rebalance/MRF、磁碟延遲飆高、GC stop-the-world、CPU steal、runtime thread starvation
+- 佐證方式（選你當下最拿得到的）：
+  - **pprof（goroutine/block/mutex）**：看是不是大量 goroutine 卡在 I/O、或鎖競爭
+  - **trace/metrics**：對齊同時間窗的 disk latency、CPU iowait、heap growth、Go GC pause
+
+> 判讀小抄：
+> - 如果「網路沒事，但只要進 healing/rebalance 就爆」：先當成 B
+> - 如果「不是特定背景任務，但跨節點、跨機架會爆」：先當成 A
+
 ### 4.2) 版本差異提醒：不同 RELEASE tag 字串/閾值可能不同
 本頁以你 workspace 的 source tree（`/home/ubuntu/clawd/minio`）為準；若你要對照線上 `RELEASE.*` 版本：
 - 先用 `grep -RIn "canceling remote connection" internal/grid`
