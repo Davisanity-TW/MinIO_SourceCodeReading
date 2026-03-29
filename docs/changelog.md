@@ -1,3 +1,5 @@
+- 2026-03-29 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 PutObject router 分流（Copy/Multipart/Normal）的快速釘死方式（cmd/api-router.go + grep）；Troubleshooting：`canceling remote connection` 補充 NTP/chrony 的快速檢查命令（避免把校時造成的時間跳動誤判成網路/資源問題）。
+
 - 2026-03-29 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 client 端（~30s 沒 pong） vs server 端（~60s 沒 ping）兩種 watchdog 的差異與 grep 錨點；Troubleshooting：`canceling remote connection` 的 TL;DR 新增「先釐清是 client 30s 還是 server 60s」的排查提示。
 
 - 2026-03-28 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補強 PutObject partial → MRF queue drop 的實際檔案/函式/grep 錨點；Troubleshooting：`canceling remote connection` 新增「快速判斷網路掉包 vs 對端忙到 ping handler 跑不動」的佐證清單（pprof/metrics/網路 counters）。

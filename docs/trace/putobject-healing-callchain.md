@@ -10,7 +10,24 @@
 
 ---
 
-## 1) PutObject：HTTP handler → ObjectLayer → erasure putObject（主流程）
+## 1) PutObject：router → HTTP handler → ObjectLayer → erasure putObject（主流程）
+
+### 1.0 先確認你追的到底是哪條 PutObject 分流（Copy / Multipart / Normal）
+PutObject 的 URL 都是 `PUT /{object:.+}`，但 MinIO 會先靠 header/query 做分流（不同版本可能略有差）。
+
+- router：`cmd/api-router.go`
+  - CopyObject：`HeadersRegexp(xhttp.AmzCopySource, ...)` → `api.CopyObjectHandler`
+  - PutObjectPart：`Queries("partNumber", ..., "uploadId", ...)` → `api.PutObjectPartHandler`
+  - PutObject（normal）：無特殊 headers/query → `api.PutObjectHandler`
+
+一鍵釘死（對你跑的版本）：
+```bash
+cd /path/to/minio
+
+grep -RIn "PutObjectHandler" -n cmd/api-router.go
+grep -RIn "CopyObjectHandler" -n cmd/api-router.go
+grep -RIn "PutObjectPartHandler" -n cmd/api-router.go
+```
 
 ### 1.1 最短 call chain（按 receiver 分層）
 

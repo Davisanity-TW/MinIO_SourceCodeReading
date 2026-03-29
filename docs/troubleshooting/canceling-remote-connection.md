@@ -25,6 +25,9 @@
 **快速 sanity check：`not seen for` 的時間是否「明顯不是 ~60s」？**
 - 多數情況你會看到接近 `~60s`（=`lastPingThreshold = 4 * clientPingInterval = 4 * 15s`）。
 - 如果 `not seen for` 明顯偏離（例如只有幾秒就觸發、或突然跳到好幾分鐘），先把 **時鐘/NTP 跳動** 納入排查（`time.Since(time.Unix(LastPing,0))` 會受系統時間回撥/大幅校時影響）。
+  - systemd：`timedatectl status`
+  - chrony：`chronyc tracking` / `chronyc sources -v`
+  - 在 incident note 記下是否有 NTP step/slew（同時間窗），避免把「校時造成的時間跳動」誤判成網路/資源問題。
 
 ## （新增）快速驗證：在你自己的 MinIO checkout 直接 grep 出這條 log 的印出點
 
