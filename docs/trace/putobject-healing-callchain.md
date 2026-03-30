@@ -389,6 +389,10 @@ grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/eras
 - `LastPing` 更新點（server 收到 ping）：`minio/internal/grid/muxserver.go`
   - `(*muxServer).ping(...)`：`atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
 
+（補）`checkRemoteAlive()` 的啟用條件（為什麼不是每條 request 都會看到它？）
+- `muxserver.go` 在建立 streaming mux 時，只有在 `msg.DeadlineMS == 0`（沒有 deadline）或 deadline 太長（> `lastPingThreshold`）才會另外起 goroutine 跑 `m.checkRemoteAlive()`。
+- 所以你在現場看到這條 log，通常代表：那條 grid mux 承載的是「長時間/串流」類型的 peer RPC（常見在 healing/scanner/rebalance/trace 這些背景流量被放大時）。
+
 ### 6.1（補）client 端也有 watchdog：30s 沒看到 pong 會先斷（常見伴隨 ErrDisconnected）
 
 很多現場會先看到 client 端（發起端）報 `ErrDisconnected`，但 server 端稍後才印出 `canceling remote connection ... not seen for ~60s`。原因是：

@@ -47,6 +47,12 @@ grep -RIn "clientPingInterval" -n internal/grid | head
 
 # （補）checkRemoteAlive 是在哪個 goroutine/loop 被呼叫？
 # 這能幫你判斷：它是不是「固定週期 tick」檢查，或是「連線事件」驅動。
+#
+# 以近期版本為例：`internal/grid/muxserver.go` 在建立 streaming mux 時，會**額外起一個 goroutine** 去跑 `m.checkRemoteAlive()`。
+# 觸發條件通常是：`msg.DeadlineMS == 0`（沒有 deadline）或 deadline 太長（> `lastPingThreshold`）。
+# 也就是：長連線/串流 request 會啟用這個 ~60s watchdog；短 request 若有較短 deadline，通常不會走到這條 log。
+#
+# 直接釘呼叫點：
 grep -RIn "checkRemoteAlive\(" -n internal/grid | head -n 50
 
 # 追到 ping 的 LastPing 更新點
