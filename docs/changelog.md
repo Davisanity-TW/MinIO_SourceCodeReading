@@ -1,3 +1,5 @@
+- 2026-03-30 22:00（Asia/Taipei）：Trace：admin heal（`docs/trace/admin-heal.md`）補齊 Items[]（`madmin.HealResultItem`）核心欄位的 server-side 填入錨點（含 Before/After drive state、Detail/ResultIndex），並補上 `mc admin heal --json` 與 server JSON 1:1 的實務對照 + jq 抽欄位範例。
+
 - 2026-03-29 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 PutObject router 分流（Copy/Multipart/Normal）的快速釘死方式（cmd/api-router.go + grep）；Troubleshooting：`canceling remote connection` 補充 NTP/chrony 的快速檢查命令（避免把校時造成的時間跳動誤判成網路/資源問題）。
 
 - 2026-03-29 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 client 端（~30s 沒 pong） vs server 端（~60s 沒 ping）兩種 watchdog 的差異與 grep 錨點；Troubleshooting：`canceling remote connection` 的 TL;DR 新增「先釐清是 client 30s 還是 server 60s」的排查提示。

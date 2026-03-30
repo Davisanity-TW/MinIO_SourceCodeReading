@@ -70,9 +70,54 @@
 | Status | Settings | 同上（`madmin.HealOpts`） | heal 設定（scan mode 等） |
 | Status | Items | 同上（`[]madmin.HealResultItem`） | 每個 item 對應 bucket/object 的 heal 結果 |
 
-> TODO（下一版要補）：
-> 1) `madmin.HealResultItem` 的欄位（Bucket/Object/Type/Detail/Result...）在 server 端「哪裡被 append」
-> 2) `mc admin heal --json`（client side）實際輸出欄位與 server JSON 是否 1:1
+## 4.1) Items[]（madmin.HealResultItem）的核心欄位：server 端怎麼填、怎麼解讀
+
+> 結論先講：`mc admin heal --json` 基本上就是把 server 回的 JSON **原樣印出**（事件流），所以大多欄位是 1:1；差異通常只在 **mc 端參數 → server 端 HealOpts**（例如 scan mode / recursive / remove）以及你是否把輸出再用 `jq` 做轉換。
+
+以你目前 workspace 的 MinIO source tree（`/home/ubuntu/clawd/minio`）為準，`HealResultItem` 在 server 端最早被初始化的位置是：
+- `cmd/erasure-healing.go`：`func (er *erasureObjects) healObject(...) (result madmin.HealResultItem, err error)`
+
+你可以在程式裡直接看到（最穩、可釘死的欄位）：
+
+| 欄位 | 代表意義 | server 端填入位置（錨點） |
+|---|---|---|
+| `Type` | heal 項目型別（object/bucket/format/…） | `cmd/erasure-healing.go`：`result = madmin.HealResultItem{ Type: madmin.HealItemObject, ... }` |
+| `Bucket` / `Object` / `VersionID` | 這次 heal 的目標 | 同上（初始化時直接填） |
+| `DiskCount` | 這個 object 對應的 disks 數量（含 offline/missing） | 同上（`DiskCount: len(storageDisks)`） |
+| `DataBlocks` / `ParityBlocks` | erasure data/parity block 數（由 quorum 推回） | `cmd/erasure-healing.go`：`result.ParityBlocks = ...` / `result.DataBlocks = ...` |
+| `Before.Drives[]` / `After.Drives[]` | 各 endpoint 的狀態（OK/OFFLINE/MISSING/CORRUPT…） | `cmd/erasure-healing.go`：`result.Before.Drives = append(... madmin.HealDriveInfo{Endpoint,State})`（After 同步） |
+| `Detail` | 若此 item 失敗，通常會放錯誤訊息字串 | `cmd/admin-heal-ops.go`：task 完成後 `res.result.Detail = res.err.Error()` |
+| `ResultIndex` | Items 事件流的遞增序號（方便 client 續接） | `cmd/admin-heal-ops.go`：`pushHealResultItem()` 內設定 |
+
+一鍵釘死（在你跑的那個 MinIO 版本，不用猜行號）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+# HealResultItem 初始化（object heal）
+grep -n "result = madmin.HealResultItem" -n cmd/erasure-healing.go | head
+
+# Before/After drive state 的填入點
+grep -n "result\.Before\.Drives" -n cmd/erasure-healing.go | head
+
+grep -n "result\.After\.Drives" -n cmd/erasure-healing.go | head
+
+# server 端把 error 塞進 Detail、以及 ResultIndex 的設定
+grep -n "Detail =" -n cmd/admin-heal-ops.go | head
+grep -n "ResultIndex" -n cmd/admin-heal-ops.go | head
+```
+
+### 4.2) `mc admin heal --json`（client side）輸出與 server JSON 的對照
+- server 端回應格式：`HealHandler` → `healSequenceStatus` → `Items: []madmin.HealResultItem`
+- `mc admin heal --json`：通常是逐次呼叫 admin heal API 並把 JSON 印出（你會看到 StartSuccess + 後續多筆 Status/Items）。
+
+因此在實務排查/做清單時，建議把 `Items[]` 當事件流去 parse：
+```bash
+# 取出 object heal 的核心欄位（bucket/object/version + detail）
+jq -r 'select(.Items?) | .Items[]? | select(.Type=="object" or .Type=="HealItemObject" or .Type|tostring|test("Object"))
+       | [.Bucket,.Object,.VersionID,.Detail] | @tsv'
+```
+
+> 提醒：`Type` 的字串長相會隨 madmin-go 版本略有差（enum 的 json tag/Marshal 行為可能不同）。如果你發現 `Type` 不是你想像的字串，最穩的做法是直接先印出一筆 raw JSON 看 `Type` 的實際值，再調整 `jq` filter。
 
 
 ## 5) Items（madmin.HealResultItem）是在哪裡被產生/塞進 Items[]？
