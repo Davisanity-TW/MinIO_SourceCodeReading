@@ -1,3 +1,5 @@
+- 2026-03-31 06:00（Asia/Taipei）：Trace：`putobject.md` 移除重複段落（避免 PutObject/erasure 呼叫鏈重複出現）；Troubleshooting：`canceling remote connection` 補一行提醒：MRF `addPartialOp()` queue 滿會 drop（best-effort），並連到 `mrf-queue-drop.md`。
+
 - 2026-03-30 22:00（Asia/Taipei）：Trace：admin heal（`docs/trace/admin-heal.md`）補齊 Items[]（`madmin.HealResultItem`）核心欄位的 server-side 填入錨點（含 Before/After drive state、Detail/ResultIndex），並補上 `mc admin heal --json` 與 server JSON 1:1 的實務對照 + jq 抽欄位範例。
 
 - 2026-03-29 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 PutObject router 分流（Copy/Multipart/Normal）的快速釘死方式（cmd/api-router.go + grep）；Troubleshooting：`canceling remote connection` 補充 NTP/chrony 的快速檢查命令（避免把校時造成的時間跳動誤判成網路/資源問題）。

@@ -21,6 +21,8 @@
 > 判讀重點：這條 log 的語意是「server 端在 ~60s 內沒看到（或沒能處理到）remote 的 ping」；原因可能是封包沒到（網路）或 handler 跑不動（I/O/CPU/GC/背景任務）。
 >
 > （新增）這個 watchdog 針對的是 **streaming mux（MuxID != 0）**；實務上它常承載 peer REST（grid RPC）這類跨節點長連線/串流流量，所以在 Healing/MRF/scanner 很忙時更容易一起出現。
+>
+> （補）若你懷疑是「PutObject 留下 partial → MRF queue 補洞 → I/O 壓力」這條鏈：記得 MRF 的 `addPartialOp()`（`cmd/mrf.go`）是 non-blocking 寫入 channel，queue 滿時會直接 drop（best-effort）。延伸：`docs/troubleshooting/mrf-queue-drop.md`。
 
 **快速 sanity check：`not seen for` 的時間是否「明顯不是 ~60s」？**
 - 多數情況你會看到接近 `~60s`（=`lastPingThreshold = 4 * clientPingInterval = 4 * 15s`）。
