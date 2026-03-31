@@ -130,6 +130,27 @@ grep -n "type partialOperation" cmd/mrf.go
 grep -n "func (m \\*mrfState) addPartialOp" cmd/mrf.go
 ```
 
+### 1.4.1（補）versions disparity：PutObject 不是只丟單一 VersionID，可能丟「多版本」bytes 讓 MRF 逐一 heal
+
+你在現場如果看到「同一個 object 在短時間內被 heal 很多次」，但 PutObject log/trace 看起來只寫了一次，常見原因之一是：
+- `renameData(...)` 在 commit/rename 過程中偵測到 **versions disparity**（不同 disks 上看到的版本集合不一致）
+- PutObject 會把 `versions`（一段 bytes，通常是多個 UUID 串接）塞進 `partialOperation.versions`
+- MRF 的 `healRoutine()` 會把 `versions` 每 16 bytes 解析成一個 VersionID，逐一呼叫 `healObject(bucket, object, versionID, scanMode)`
+
+可釘死的 grep 錨點（在你跑的版本）：
+```bash
+cd /path/to/minio
+
+# putObject() 內：commit 之後，若拿到 versions bytes → enqueue 到 MRF
+grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 30
+grep -n "versions" cmd/erasure-object.go | head -n 120
+
+# MRF 端：versions bytes → 逐 16 bytes 切 UUID → 逐一 heal
+grep -n "len(u\\.versions" cmd/mrf.go
+```
+
+> 實務意義：你在事件筆記要能區分「單一版本 partial」vs「多版本 disparity」；後者更容易把 healing 放大成一串連續 heal。
+
 ---
 
 ## 2) Healing：MRF/scanner → HealObject() → healObject()（真正 RS rebuild + RenameData 寫回）
