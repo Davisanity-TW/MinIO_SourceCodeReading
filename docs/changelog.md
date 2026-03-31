@@ -1,3 +1,5 @@
+- 2026-03-31 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 grid streaming mux watchdog（`checkRemoteAlive()`）的啟用條件（`DeadlineMS`）之快速 grep 錨點，方便把「為什麼只有某些長連線會印 `canceling remote connection`」釘死到線上版本。
+
 - 2026-03-31 14:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補齊 versions disparity → `partialOperation.versions` → `mrfState.healRoutine()` 逐版本 heal 的 call chain 與 grep anchors（方便解釋「同一 object 為何短時間被連續 heal」）。
 
 - 2026-03-31 06:00（Asia/Taipei）：Trace：`putobject.md` 移除重複段落（避免 PutObject/erasure 呼叫鏈重複出現）；Troubleshooting：`canceling remote connection` 補一行提醒：MRF `addPartialOp()` queue 滿會 drop（best-effort），並連到 `mrf-queue-drop.md`。
