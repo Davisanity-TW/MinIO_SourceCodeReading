@@ -1,3 +1,5 @@
+- 2026-04-01 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 HealObject 正式 ObjectLayer call chain（pool→sets→objects→healObject）的「一鍵 grep 錨點」，方便把 healing 入口釘到實際檔案/函式。
+
 - 2026-04-01 14:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-field-checklist.md`，把 `canceling remote connection` 的現場蒐證三件套（ss/iostat/internal trace）與 10 分鐘判斷樹整理成可直接貼進 incident note 的 checklist。
 
 - 2026-04-01 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 把 Peer REST（grid RPC）跟 healing 直接相關的實際 handler 補成可釘死的函式/檔案（`BackgroundHealStatusHandler` / `HealBucketHandler`）+ 一鍵 grep。

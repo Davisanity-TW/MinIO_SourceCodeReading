@@ -249,6 +249,17 @@ grep -RIn "canceling remote connection" -n internal/grid | head
   - `func (er erasureObjects) HealObject(ctx context.Context, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
   - `func (er *erasureObjects) healObject(ctx context.Context, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
 
+快速釘死（避免你在多版本/多 fork 間跳來跳去）：
+```bash
+cd /path/to/minio
+
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd/erasure-server-pool.go
+grep -RIn "func (s \\*erasureSets) HealObject" -n cmd/erasure-sets.go
+
+grep -RIn "func (er erasureObjects) HealObject" -n cmd/erasure-healing.go
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
+```
+
 ### 2.4（補）`healObject()` 內部最短「可釘死」步驟鏈：read meta → 算 quorum → RS rebuild → RenameData
 
 > 目的：把真正最吃 I/O 的 heal 路徑補到「實際函式名」，讓你在 incident 時可以很快回答：
