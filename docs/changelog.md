@@ -1,3 +1,5 @@
+- 2026-04-01 14:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-field-checklist.md`，把 `canceling remote connection` 的現場蒐證三件套（ss/iostat/internal trace）與 10 分鐘判斷樹整理成可直接貼進 incident note 的 checklist。
+
 - 2026-04-01 06:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 把 Peer REST（grid RPC）跟 healing 直接相關的實際 handler 補成可釘死的函式/檔案（`BackgroundHealStatusHandler` / `HealBucketHandler`）+ 一鍵 grep。
 
 - 2026-03-31 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 grid streaming mux watchdog（`checkRemoteAlive()`）的啟用條件（`DeadlineMS`）之快速 grep 錨點，方便把「為什麼只有某些長連線會印 `canceling remote connection`」釘死到線上版本。
