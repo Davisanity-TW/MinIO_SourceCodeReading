@@ -54,6 +54,20 @@ mc admin trace --type internal --json <ALIAS> \
 
 ## 2) 10 分鐘判斷樹（方向分對就贏一半）
 
+### 先確認：你看到的是「server 端 ~60s watchdog」不是「client 端 ~30s watchdog」
+同一個 incident 常同時出現：
+- **client 端**先報 `ErrDisconnected`（常見 ~30s = `clientPingInterval*2` 沒看到 `LastPong`）
+- **server 端**再印 `canceling remote connection ... not seen for ~60s`（常見 ~60s = `lastPingThreshold = 4*clientPingInterval` 沒看到 `LastPing`）
+
+所以：只看到其中一邊很容易把因果看反；能的話兩邊 log 都撈同一時間窗。
+
+### 快速排除「時間跳動/NTP step」造成的假象
+如果 `not seen for` 的 duration 明顯不是 ~60s（例如突然只有幾秒或跳到好幾分鐘），把 **NTP 校時/時間回撥** 納入排查：
+- `timedatectl status`
+- `chronyc tracking` / `chronyc sources -v`
+
+（`time.Since(time.Unix(LastPing,0))` 會受到系統時間大幅調整影響。）
+
 ### A) 偏「網路/傳輸層」的典型樣子
 - `ss -ti` 看到 retrans/RTO 上升
 - remote 的 `iostat` 不一定高

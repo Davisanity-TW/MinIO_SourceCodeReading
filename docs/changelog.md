@@ -1,3 +1,5 @@
+- 2026-04-02 06:00（Asia/Taipei）：Troubleshooting：更新 `canceling-remote-connection-field-checklist.md`，補上「client ~30s vs server ~60s watchdog」判讀提醒與 NTP/時間跳動的快速排除檢查。
+
 - 2026-04-01 22:00（Asia/Taipei）：Trace：`putobject-healing-callchain.md` 補上 HealObject 正式 ObjectLayer call chain（pool→sets→objects→healObject）的「一鍵 grep 錨點」，方便把 healing 入口釘到實際檔案/函式。
 
 - 2026-04-01 14:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-field-checklist.md`，把 `canceling remote connection` 的現場蒐證三件套（ss/iostat/internal trace）與 10 分鐘判斷樹整理成可直接貼進 incident note 的 checklist。
