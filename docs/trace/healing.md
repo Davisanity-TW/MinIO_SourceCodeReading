@@ -651,7 +651,75 @@ MinIO 會透過 admin heal API/CLI 在執行時回報細節。實務上可用：
 - `mc admin heal <alias> --recursive --json`（或搭配 `--scan deep`）
   - 這會輸出每個 object 的 heal 狀態（適合留存/管線化）。
 
-> TODO：後續把 admin heal handler（server side）與 `madmin-go` 的輸出欄位也對到 source code，讓你能把 JSON 欄位一路 trace 回內部流程。
+### （補）Admin heal API：server handler 與「回傳 JSON」的實際來源（把 `mc admin heal` 對回 code）
+
+> 目的：當你在現場用 `mc admin heal ... --json` 收到 `ClientToken`、或輪詢到每個 object 的 heal item 時，可以知道：
+> - 哪些 API route 進到同一個 handler
+> - token/狀態是存在哪個全域 state
+> - server 是怎麼決定「回 start token」vs「回 status items」vs「stop」
+
+以 `/home/ubuntu/clawd/minio`（你目前 workspace 的 MinIO source）為準：
+
+**1) Admin router（URL → handler）**
+- 檔案：`cmd/admin-router.go`
+- routes（同一個 handler）：
+  - `POST /minio/admin/v3/heal/`
+  - `POST /minio/admin/v3/heal/{bucket}`
+  - `POST /minio/admin/v3/heal/{bucket}/{prefix:.*}`
+- handler：`adminAPIHandlers.HealHandler`
+
+一鍵定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "HealHandler" -n cmd/admin-router.go cmd/admin-handlers.go | head -n 80
+```
+
+**2) Server side handler：token 路由/行為分流的關鍵點**
+- 檔案：`cmd/admin-handlers.go`
+- 函式：`func (a adminAPIHandlers) HealHandler(w http.ResponseWriter, r *http.Request)`
+
+你要抓的 3 個分支（這三個分支就對應到你在 CLI/Console 看到的主要行為）：
+
+- (A) **沒帶 token 且已有正在跑的 heal sequence**：直接回 `madmin.HealStartSuccess{ClientToken,...}`
+  - 關鍵 anchor：
+    - `healPath := pathJoin(hip.bucket, hip.objPrefix)`
+    - `globalAllHealState.getHealSequence(healPath)`
+    - `json.Marshal(madmin.HealStartSuccess{...})`
+
+- (B) **帶 token（輪詢狀態）**：回 `globalAllHealState.PopHealStatusJSON(...)` 的結果
+  - 關鍵 anchor：
+    - `globalAllHealState.PopHealStatusJSON(healPath, hip.clientToken)`
+
+- (C) **forceStart/forceStop**：啟動或停止 heal sequence（非輪詢）
+  - 你會看到 handler 透過 goroutine 寫回 response（含 keep-alive whitespace）
+  - 關鍵 anchor：
+    - `extractHealInitParams(...)`（解析 bucket/prefix + token + start/stop flags）
+    - `globalAllHealState.stopHealSequence(healPath)`
+    - `keepConnLive(...)`（>10s 時先送 whitespace 保活）
+
+快速定位（避免行號飄）：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -n "func (a adminAPIHandlers) HealHandler" -n cmd/admin-handlers.go
+
+grep -n "extractHealInitParams" cmd/admin-handlers.go
+grep -n "globalAllHealState\.getHealSequence" cmd/admin-handlers.go
+grep -n "HealStartSuccess" cmd/admin-handlers.go
+grep -n "PopHealStatusJSON" cmd/admin-handlers.go
+grep -n "stopHealSequence" cmd/admin-handlers.go
+```
+
+**3) 你在 `--json` 看到的每筆 heal item 是哪裡產生的？**
+實際上 server 端會把 heal 進度塞進 `globalAllHealState`（一個全域 heal state/sequence 管理器），而 `PopHealStatusJSON()` 會把「目前累積的 heal items」序列化成 JSON 回傳。
+
+因此你要把 JSON 欄位一路 trace 回內部流程時，最穩的做法是：
+1) 先在 `cmd/admin-handlers.go` 釘死 `PopHealStatusJSON()` 的呼叫點（你已經知道是哪個 API 路徑/handler）。
+2) 再去找 `globalAllHealState` 的型別與 `PopHealStatusJSON()` 的實作檔案（不同版本可能拆在不同檔）。
+3) 由 `globalAllHealState` 的「items 累積點」往回追到：background heal worker / scanner / MRF / new-disk heal 哪裡把 item 寫進去。
+
+（這樣做的好處：跨版本不怕 `madmin-go` struct 欄位改名；你只要抓到“items 是在哪裡 append/encode”，就能對齊實際行為。）
 
 ---
 
