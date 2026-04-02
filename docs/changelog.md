@@ -218,3 +218,4 @@
 - 2026-03-20 22:00：Troubleshooting：新增 grid  筆記頁（client ~30s 沒 pong 自動斷線 vs server ~60s watchdog），提供 10 分鐘 SOP（網路 vs I/O/背景任務）。
 - 2026-03-20 22:00：Troubleshooting：新增 grid `ErrDisconnected` 筆記頁（client ~30s 沒 pong 自動斷線 vs server ~60s watchdog），提供 10 分鐘 SOP（網路 vs I/O/背景任務）。
 - 2026-03-30 14:00：Troubleshooting：`canceling remote connection` 補上 `checkRemoteAlive()` watchdog 的啟用條件（無/過長 deadline 才啟用）；Trace：PutObject/Healing call chain 同步補上對應說明，方便判斷哪些 peer RPC 會觸發 ~60s watchdog。
+- 2026-04-03 06:00：Trace：PutObject/Healing 補上 PutObject `renameData()` 內部逐 disk 呼叫 `StorageAPI.RenameData()` 的 code anchors，方便把 PutObject 尾端 latency 直接對到 storage rename/fsync。

@@ -345,6 +345,36 @@ PutObject 與 Healing 最容易共振的點：兩者最後都會落到 storage r
 - 常見實作：`cmd/xl-storage.go`
   - `func (s *xlStorage) RenameData(ctx context.Context, srcBucket, srcEntry string, fi FileInfo, dstBucket, dstEntry string, opts RenameOptions) error`
 
+### 3.0（補）把 PutObject 的 `renameData()` 也釘到「每顆 disk 的 RenameData」呼叫點
+
+> 目的：很多讀碼筆記只記到「PutObject 會 renameData → commitRenameDataDir」，但你在現場要判斷 I/O 壓力時，更需要知道：
+> - `renameData()` 內部其實也是「逐顆 disk 做 RenameData」
+> - 所以 PutObject 的 tail latency 很常跟 storage 層 rename/fsync/metadata lock 直接相關
+
+在多數版本的 MinIO（erasure backend）裡：
+- `cmd/erasure-object.go: renameData(...)` 會對 `onlineDisks[]` 逐顆呼叫 `disk.RenameData(...)`
+- 換句話說：PutObject 的「tmp → 正式」最後也會落到同一個 storage 介面 `StorageAPI.RenameData()`
+
+可釘死的 grep 錨點（在你跑的版本）：
+```bash
+cd /path/to/minio
+
+# PutObject 的 renameData() 定義與主要呼叫點
+grep -n "^func renameData" cmd/erasure-object.go
+grep -n "renameData(ctx" cmd/erasure-object.go | head -n 40
+
+# renameData() 內部逐 disk 的 storage rename
+grep -n "\\.RenameData(ctx" cmd/erasure-object.go | head -n 80
+
+# StorageAPI 介面與 xlStorage 實作
+grep -n "RenameData(ctx" cmd/storage-interface.go
+grep -n "func (s \\*xlStorage) RenameData" cmd/xl-storage.go
+```
+
+> 實務判讀：
+> - PutObject 尾端卡住：常直接對應到 `xlStorage.RenameData()` 的 metadata ops（mkdir/rename/fsync）或底層磁碟 latency。
+> - Healing 尾端卡住：同樣是 `RenameData()`，但呼叫點通常在 `cmd/erasure-healing.go`（逐 disk commit）。
+
 ### 3.1（補）PutObject vs Healing：最後的「commit/可見性切換點」其實長得不一樣
 
 同樣都是「tmp → 正式路徑」的安全提交模型，但 PutObject 與 Healing 在 code 上的 commit 點不同：
