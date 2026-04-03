@@ -4,6 +4,19 @@
 >
 > 常一起出現/被誤認的訊息：`grid: ErrDisconnected` / `connection reset by peer` / `i/o timeout`（可搭配閱讀：`docs/troubleshooting/grid-errdisconnected.md`）。
 
+## 先把 log 變成「可追」的三個欄位（建議每次 incident 都照抄）
+原文常長這樣：
+```
+WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for 1m2.3s
+```
+把它固定拆成：
+- **time window**：`T ± 5m`
+- **local->remote**：`10.0.0.10:9000 -> 10.0.0.11:9000`
+- **not seen for**：`1m2.3s`（多數版本≈60s）
+
+值班用的精簡版 checklist（30 分鐘內把方向分對）：
+- `docs/troubleshooting/canceling-remote-connection-field-checklist.md`
+
 ## Code anchors（先把「哪裡印的 / 看的是什麼 timestamp」釘死）
 以 upstream MinIO `master`（GitHub raw/檔名與函式名）為準（行號可能因版本不同而漂移），這行 log 的最短關聯鏈是：
 
