@@ -66,6 +66,22 @@ mc admin info --json <ALIAS> \
       | [.endpoint,.addr,.hostname,.state] | @tsv'
 ```
 
+### 1.5（新增）如果懷疑是 healing/MRF/scanner 共振：先把「背景 heal 狀態」抓下來
+在 **任一節點**（同一時間窗）補抓一份背景 healing 狀態，之後回放/寫筆記會差很多：
+
+```bash
+# 背景 healing 是否正在跑？（含進度/錯誤摘要）
+mc admin heal status --json <ALIAS> \
+  | jq -r '.time, (.healStatus // .)'
+
+# 如果你有在做「新盤/回復」事件排查，也可以同時抓 info（看哪台掉線/重新上線）
+mc admin info --json <ALIAS> \
+  | jq -r '.servers[] | [.time,.endpoint,.state,.drives[].state] | @tsv' 2>/dev/null | head
+```
+
+（最省腦的 log 關鍵字）
+- `heal|healing|scanner|mrf|partial|rebalance`
+
 ---
 
 ## 2) 10 分鐘判斷樹（方向分對就贏一半）
