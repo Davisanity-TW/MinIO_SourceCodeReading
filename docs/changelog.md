@@ -1,3 +1,4 @@
+- 2026-04-03 22:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection-field-checklist.md` 補上「用 `mc admin info --json` 把 remote IP 對到 trace 的 nodeName」小節，現場對齊 log/trace 更快。
 - 2026-04-03 14:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection.md` 頁首新增「單行 log → time window/local->remote/not-seen-for」拆解模板，方便把 `canceling remote connection` 直接變成可追的 incident note 欄位。
 
 - 2026-04-02 06:00（Asia/Taipei）：Troubleshooting：更新 `canceling-remote-connection-field-checklist.md`，補上「client ~30s vs server ~60s watchdog」判讀提醒與 NTP/時間跳動的快速排除檢查。

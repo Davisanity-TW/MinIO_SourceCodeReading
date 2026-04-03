@@ -50,6 +50,22 @@ mc admin trace --type internal --json <ALIAS> \
            | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
 ```
 
+### 1.4（補）把 log 的 `remoteIP:9000` 對到 trace 的 `nodeName`（避免看 trace 看不懂是哪台）
+`canceling remote connection` 的 log 會印 `A:9000->B:9000`，但 trace/metrics 常用 `nodeName/hostname`。先把對照表做出來很省時間：
+
+```bash
+# 列出所有節點 endpoint / addr / hostname
+mc admin info --json <ALIAS> \
+  | jq -r '.servers[] | [.endpoint,.addr,.hostname,.state] | @tsv'
+
+# 用 remote IP 反查（把 10.0.0.11 換成你 log 的 remote）
+REMOTE_IP='10.0.0.11'
+mc admin info --json <ALIAS> \
+  | jq -r --arg ip "$REMOTE_IP" '.servers[]
+      | select((.endpoint|tostring)|contains($ip) or (.addr|tostring)|contains($ip))
+      | [.endpoint,.addr,.hostname,.state] | @tsv'
+```
+
 ---
 
 ## 2) 10 分鐘判斷樹（方向分對就贏一半）
