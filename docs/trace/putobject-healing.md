@@ -45,9 +45,9 @@ objInfo, err := putObject(ctx, bucket, object, pReader, opts)
   - encode：`erasure.Encode(...)`
   - tmp→正式：`renameData(...)` → `commitRenameDataDir(...)`
   - quorum 過但有洞：`er.addPartial(...)` → `globalMRFState.addPartialOp(...)`
-    - `cmd/erasure-object.go:2107`：`func (er erasureObjects) addPartial(bucket, object, versionID string)`
+    - `cmd/erasure-object.go`：`func (er erasureObjects) addPartial(bucket, object, versionID string)`
       - 只做一件事：把 `partialOperation{bucket,object,versionID,queued:time.Now()}` 丟進 `globalMRFState.opCh`
-    - `cmd/mrf.go:52`：`func (m *mrfState) addPartialOp(op partialOperation)`
+    - `cmd/mrf.go`：`func (m *mrfState) addPartialOp(op partialOperation)`
       - `select { case m.opCh <- op: default: }`（queue 滿就直接 drop，不會 block PutObject）
 
 ### 0.2 Healing 主線（背景補洞/重建）
@@ -56,7 +56,7 @@ objInfo, err := putObject(ctx, bucket, object, pReader, opts)
   - `cmd/mrf.go`
     - `(*mrfState).addPartialOp(...)`
     - `(*mrfState).healRoutine(z *erasureServerPools)`（消費 queue）
-      - `cmd/mrf.go:68`：`func (m *mrfState) healRoutine(z *erasureServerPools)`
+      - `cmd/mrf.go`：`func (m *mrfState) healRoutine(z *erasureServerPools)`
       - 核心 loop：`u := <-m.opCh` →（必要時 sleep 1s）→ `healSleeper.Timer()` → `healObject(u.bucket,u.object,u.versionID,scan)` → `wait()`
       - 會跳過 `.minio.sys` 的 `.metacache/ tmp/ multipart/ tmp-old/`（避免對暫存物件做 MRF heal）
     - `healObject(...)` helper → `z.HealObject(...)`
@@ -211,23 +211,11 @@ grep -RIn "func (er erasureObjects) PutObject" -n cmd/erasure-object.go
 grep -RIn "func \(er erasureObjects\) putObject" -n cmd/erasure-object.go
 ```
 
-### 1.1（補）以目前 workspace source tree 的「精準位置」對照（含行號/commit）
-> 下面行號是我在本 workspace（`/path/to/minio`）當下 checkout 直接 grep 出來的結果；你換 MinIO 版本/commit 後行號會飄，但函式簽名不太會變。
+### 1.1（補）不要依賴行號：用函式簽名 + `git rev-parse` 固定錨點
 
-- `cmd/object-handlers.go`
-  - `objectAPIHandlers.PutObjectHandler()`：`cmd/object-handlers.go:1987`
-- `cmd/erasure-server-pool.go`
-  - `(*erasureServerPools).PutObject()`：`cmd/erasure-server-pool.go:1056`
-- `cmd/erasure-object.go`
-  - `erasureObjects.PutObject()`（wrapper）：`cmd/erasure-object.go:1242`
-  - `erasureObjects.putObject()`（主流程）：`cmd/erasure-object.go:1247`
-  - `renameData(...)`（func 定義）：`cmd/erasure-object.go:1015`
-  - `renameData(...)`（putObject 內呼叫點）：`cmd/erasure-object.go:1526`
-  - `commitRenameDataDir(...)`（呼叫點）：`cmd/erasure-object.go:1539`
-  - `commitRenameDataDir(...)`（func 定義）：`cmd/erasure-object.go:1785`
-
-#### 1.1.1 一鍵重抓（避免行號/版本漂移）
-在你自己的 checkout（RELEASE tag / fork）想重抓同樣的錨點，建議用「函式簽名 grep」而不要寫死行號：
+不同 RELEASE tag / fork 之間行號很容易漂移；建議在 incident note 固定記：
+- `git rev-parse --short HEAD`
+- 以及關鍵函式的 signature grep 輸出（檔案 + 行號）
 
 ```bash
 cd /path/to/minio
@@ -242,10 +230,10 @@ grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
 
 grep -n "^func renameData" cmd/erasure-object.go
 
-grep -n "^func (er erasureObjects) commitRenameDataDir" cmd/erasure-object.go
+grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 20
 
+# Healing
 grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd/erasure-server-pool.go
-
 grep -n "^func (er \\*erasureObjects) healObject" cmd/erasure-healing.go
 ```
 
@@ -253,7 +241,7 @@ grep -n "^func (er \\*erasureObjects) healObject" cmd/erasure-healing.go
 PutObject 在 multi-pool（多個 erasure pools）情境，`(*erasureServerPools).PutObject()` 會先做：
 1) input 檢查：`checkPutObjectArgs(ctx, bucket, object)`
    - 檔案：`cmd/object-api-input-checks.go`
-   - 本機 workspace ：`cmd/object-api-input-checks.go:161`
+   - 定位方式：`grep -RIn "func checkPutObjectArgs" -n cmd/object-api-input-checks.go`（行號依版本而定）
 2) 物件名編碼（dir object）：`object = encodeDirObject(object)`
 3) 若 `!opts.NoLock`：
    - 先在「pool 之上」拿 **object lock**：`z.NewNSLock(bucket, object).GetLock(...)`
@@ -366,9 +354,15 @@ PutObject 在 encode 寫完 `.minio.sys/tmp` 後，通常會進入兩段「把 t
 PutObject 這段最終會把 `.minio.sys/tmp` 裡的 shards 以 rename 方式切換到正式路徑；你在 trace/pprof 上看到卡住時，最有用的落點通常是 storage 層的 rename。
 
 - interface：`cmd/storage-interface.go`（`StorageAPI.RenameData`）
-  - 本機 workspace ：`cmd/storage-interface.go:88`
 - 實作：`cmd/xl-storage.go`（`func (s *xlStorage) RenameData(...)`）
-  - 本機 workspace ：`cmd/xl-storage.go:2456`
+
+（建議用 signature grep 固定錨點）
+```bash
+cd /path/to/minio
+
+grep -n "RenameData(ctx" cmd/storage-interface.go
+grep -n "func (s \\*xlStorage) RenameData" cmd/xl-storage.go
+```
 
 讀碼定位：
 ```bash

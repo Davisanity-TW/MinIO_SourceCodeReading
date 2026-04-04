@@ -37,6 +37,42 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 >
 > （補）若你懷疑是「PutObject 留下 partial → MRF queue 補洞 → I/O 壓力」這條鏈：記得 MRF 的 `addPartialOp()`（`cmd/mrf.go`）是 non-blocking 寫入 channel，queue 滿時會直接 drop（best-effort）。延伸：`docs/troubleshooting/mrf-queue-drop.md`。
 
+## （新增）把 `canceling remote connection` 跟 PutObject/Healing 對齊的「最短因果鏈」（方便寫 incident note）
+
+很多現場會把這條 log 直覺當成「網路斷線」，但若你同時間也看到 **healing/scanner/MRF** 很忙，常見的最短因果鏈其實是：
+
+1) **PutObject quorum 過但留下 partial（缺片）**
+   - `cmd/erasure-object.go`：`erasureObjects.putObject()` 在 commit 後偵測部分 disks offline → `addPartial()` / `globalMRFState.addPartialOp(...)`
+2) **MRF/scanner 觸發背景修復**
+   - `cmd/mrf.go`：`(*mrfState).healRoutine()` 出隊 → `HealObject()`
+   - `cmd/data-scanner.go`：`(*scannerItem).applyHealing()` → `HealObject()`
+3) **修復的重建/寫回把 I/O 打滿（尤其 rename/fsync/metadata ops）**
+   - `cmd/erasure-healing.go`：`(*erasureObjects).healObject()` 內 `erasure.Heal(...)`（重建） + `StorageAPI.RenameData(...)`（寫回）
+4) **對端忙到 ping handler 跑不動 → ~60s watchdog 觸發**
+   - `minio/internal/grid/muxserver.go`：`checkRemoteAlive()` → `canceling remote connection ... not seen for ...`
+
+快速釘 anchor（在你正在跑的版本）：
+```bash
+cd /path/to/minio
+
+# 1) PutObject partial/MRF
+grep -RIn "addPartial(" -n cmd/erasure-object.go
+grep -RIn "globalMRFState\.addPartialOp" -n cmd/erasure-object.go
+
+# 2) MRF/scanner 觸發 HealObject
+grep -RIn "healRoutine" -n cmd/mrf.go
+grep -RIn "applyHealing" -n cmd/data-scanner.go
+
+# 3) Healing 重建/寫回
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
+grep -RIn "RenameData\(" -n cmd/erasure-healing.go cmd/xl-storage.go cmd/storage-interface.go | head
+
+# 4) grid watchdog
+grep -RIn "canceling remote connection" -n internal/grid | head
+```
+
+> 實務寫法：incident note 裡先把「同時間窗 healing/I-O 壓力」寫清楚，再把上面 4 段鏈接貼上，基本上就能避免把因果寫反。
+
 **快速 sanity check：`not seen for` 的時間是否「明顯不是 ~60s」？**
 - 多數情況你會看到接近 `~60s`（=`lastPingThreshold = 4 * clientPingInterval = 4 * 15s`）。
 - 如果 `not seen for` 明顯偏離（例如只有幾秒就觸發、或突然跳到好幾分鐘），先把 **時鐘/NTP 跳動** 納入排查（`time.Since(time.Unix(LastPing,0))` 會受系統時間回撥/大幅校時影響）。
