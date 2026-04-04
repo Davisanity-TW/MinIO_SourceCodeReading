@@ -937,3 +937,54 @@ grep -RIn "TraceHealing" -n . | head -n 50
 - `minio/internal/grid/muxserver.go`：`(*muxServer).checkRemoteAlive()` 判定 `LastPing` 超過 threshold → 印 `canceling remote connection ... not seen for ...` → `m.close()`
 
 > 延伸閱讀（同 repo）：`docs/troubleshooting/canceling-remote-connection.md`
+
+---
+
+## 10)（新增）把「PutObject / Healing 的最終落盤」補到 storage 層：RenameData 的介面與實作
+
+> 目的：PutObject 與 Healing 最後都會落到 `StorageAPI.RenameData()`（原子切換點）。
+> 你在做 pprof/block profile 或看慢 I/O 時，常常需要一路追到 `(*xlStorage).RenameData()` 才能把「卡住的 syscall」對到是哪個上層流程在觸發。
+
+### 10.1 PutObject：renameData()/commitRenameDataDir() → StorageAPI.RenameData()
+
+上層：
+- `cmd/erasure-object.go`
+  - `renameData(...)`（把 `.minio.sys/tmp` 內新寫好的 shards 轉正）
+  - `commitRenameDataDir(...)`（完成 dataDir 切換/commit）
+
+落到 storage 介面：
+- `cmd/storage-interface.go`
+  - `type StorageAPI interface { ... RenameData(ctx, srcBucket, srcEntry string, fi FileInfo, dstBucket, dstObject string, opts RenameOptions) error }`
+
+常見實作：
+- `cmd/xl-storage.go`
+  - `func (s *xlStorage) RenameData(ctx context.Context, srcBucket, srcEntry string, fi FileInfo, dstBucket, dstObject string, opts RenameOptions) error`
+
+> 讀碼提示：`RenameData()` 通常會做大量 `mkdir/rename/fsync`（與底層 FS/磁碟行為高度耦合）。
+> 因此如果你看到「PutObject latency 變差」或「healing duration 拉長」，把 bottleneck 往 `xl-storage.go: RenameData()` 找，往往比只盯 `erasure.Encode/Heal` 更快抓到 syscall 層的真兇。
+
+### 10.2 Healing：disk.RenameData(...) 其實就是同一個 StorageAPI.RenameData()
+
+上層：
+- `cmd/erasure-healing.go`
+  - `(*erasureObjects).healObject()` 的寫回段落會呼叫：
+    - `disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i], bucket, object, RenameOptions{})`
+
+其中 `disk` 的型別是 `StorageAPI`（通常是 `*xlStorage`），所以 Healing 最終也會走到：
+- `cmd/xl-storage.go`：`(*xlStorage).RenameData(...)`
+
+### 10.3 一鍵 grep（用你正在跑的 MinIO 版本把路徑釘死）
+
+```bash
+cd /path/to/minio
+
+# PutObject rename/commit
+grep -RIn "func renameData\(" -n cmd/erasure-object.go
+grep -RIn "commitRenameDataDir" -n cmd/erasure-object.go
+
+# storage interface + impl
+grep -RIn "RenameData\(" -n cmd/storage-interface.go cmd/xl-storage.go
+
+# Healing 寫回點
+grep -RIn "\.RenameData\(" -n cmd/erasure-healing.go | head -n 50
+```
