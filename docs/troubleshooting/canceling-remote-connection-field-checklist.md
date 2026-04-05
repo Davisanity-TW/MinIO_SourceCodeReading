@@ -79,8 +79,19 @@ mc admin info --json <ALIAS> \
   | jq -r '.servers[] | [.time,.endpoint,.state,.drives[].state] | @tsv' 2>/dev/null | head
 ```
 
+### 1.6（新增）沒有 metrics/trace 也能做的最小關聯：同時間窗 grep remote 節點背景關鍵字
+如果你只有節點 log（沒有 Prometheus/trace），至少先在 **remote 節點**（被 cancel 的那台）把同時間窗的關鍵字抓下來，避免把「結果」當成「根因」。
+
+```bash
+# systemd/journald
+journalctl -u minio -S "10 min ago" \
+  | egrep -i 'canceling remote connection|errdisconnected|heal|healing|scanner|mrf|partial|rebalance|drive.*offline|disk.*offline' \
+  | tail -n 300
+```
+
 （最省腦的 log 關鍵字）
 - `heal|healing|scanner|mrf|partial|rebalance`
+- `drive offline|disk offline`（同時間窗出現的話，通常 healing/MRF 會被放大）
 
 ---
 

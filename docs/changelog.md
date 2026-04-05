@@ -1,3 +1,4 @@
+- 2026-04-05 14:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection-field-checklist.md` 補上「只有節點 log 也能做的最小關聯（journalctl grep 同時間窗）」段落，方便快速把 `canceling remote connection` 與 healing/MRF/scanner/disk offline 關鍵字對齊。
 - 2026-04-05 06:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection.md`，把 `canceling remote connection` 整理成「根因分類 + 10 分鐘排查順序 + code anchors（log 字串/HealObject/RenameData）」的可操作筆記頁。
 - 2026-04-04 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 補上一節「PutObject/Healing 最終落盤都會落到 `StorageAPI.RenameData()` → `xlStorage.RenameData()`」的介面/實作錨點與一鍵 grep。
 - 2026-04-03 22:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection-field-checklist.md` 補上「用 `mc admin info --json` 把 remote IP 對到 trace 的 nodeName」小節，現場對齊 log/trace 更快。
