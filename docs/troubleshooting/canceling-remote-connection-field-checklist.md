@@ -21,6 +21,8 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 - **not seen for**：`1m2.3s`（多數版本≈60s）
 
 > `local` = 印 log 的這台；`remote` = 被判定「心跳沒看到」的那台。
+>
+> （補）這條 log 多半來自 **grid streaming mux** 的 watchdog（長連線/串流類 peer RPC 才會特別容易打到）；所以看到它時，別只盯「網路」，也要同時間對齊 healing/scanner/rebalance/MRF 這種容易放大 streaming RPC 的背景流量。
 
 ---
 
