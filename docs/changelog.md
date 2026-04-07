@@ -232,3 +232,4 @@
 - 2026-04-06 14:00：Troubleshooting：新增 `canceling remote connection` 現場 log 範例頁（可直接貼 incident note），補上 server ~60s watchdog 與 client `ErrDisconnected`、以及 Healing/MRF 共振寫法。
 
 - 2026-04-06 22:00：Troubleshooting：新增 `canceling remote connection` incident note 模板頁（快速蒐證包 + 最短因果鏈 + code anchors）。
+- 2026-04-07 22:00：Troubleshooting：新增 `canceling remote connection` 現場快速 grep pack（journald/ss/iostat/mc admin 最小證據包），讓只有 log 的情境也能把事件整理成可回放筆記。
