@@ -1,3 +1,4 @@
+- 2026-04-07 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 補一節「MRF 狀態機 lifecycle」：`globalMRFState` 初始化/建構與 `healRoutine()` 的啟動點怎麼用 grep 釘死（避免只看到 enqueue，但不知道 consumer 何時/在哪裡起來）。
 - 2026-04-07 06:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection-field-checklist.md` 補上一句提醒：此 log 多半是 grid **streaming mux** 的 watchdog（長連線/串流類 peer RPC 更容易觸發），排查時要同步對齊 healing/scanner/rebalance/MRF 背景流量，避免只盯網路。
 - 2026-04-05 14:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection-field-checklist.md` 補上「只有節點 log 也能做的最小關聯（journalctl grep 同時間窗）」段落，方便快速把 `canceling remote connection` 與 healing/MRF/scanner/disk offline 關鍵字對齊。
 - 2026-04-05 06:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection.md`，把 `canceling remote connection` 整理成「根因分類 + 10 分鐘排查順序 + code anchors（log 字串/HealObject/RenameData）」的可操作筆記頁。

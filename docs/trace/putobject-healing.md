@@ -52,6 +52,33 @@ objInfo, err := putObject(ctx, bucket, object, pReader, opts)
 
 ### 0.2 Healing 主線（背景補洞/重建）
 
+> 本小節補一個常被漏掉的點：**MRF 並不是「被呼叫一次就立刻 heal 一次」的函式，而是一個在 server lifecycle 裡常駐的背景狀態機**。
+> 你在現場要把「PutObject 留 partial」跟「後面真的開始 heal」對起來時，最好同時釘兩個錨點：
+> 1) `globalMRFState.addPartialOp(...)`（enqueue）
+> 2) MRF 的 consumer goroutine（誰啟動 `healRoutine()`，以及它何時開始消費）
+
+#### 0.2.0（新增）MRF 狀態機的 lifecycle：`globalMRFState` 在哪裡初始化、`healRoutine()` 在哪裡被啟動？
+
+> 不同 RELEASE tag 的初始化位置可能會搬家，但這組 grep 方式幾乎都能把你「線上跑的那個版本」釘死。
+
+在你要對照的 MinIO source tree：
+```bash
+cd /path/to/minio
+
+# 1) 全域狀態（通常是 globalMRFState 變數宣告/預設大小）
+grep -RIn "globalMRFState" -n cmd | head -n 80
+
+# 2) mrfState 的建構（newMRFState/initMRFState 之類）
+grep -RIn "newMRFState|initMRF" -n cmd/mrf.go cmd/*.go | head -n 120
+
+# 3) healRoutine() 何時被 go 起來（最重要：啟動點在哪個 init/startup 路徑）
+grep -RIn "go .*healRoutine" -n cmd/mrf.go cmd/*.go | head -n 120
+```
+
+實務判讀（很常用）：
+- 如果你能在 log/pprof 看到 `healRoutine` goroutine 存在，但 `opCh` 很久沒消費：偏向 consumer 被卡住（I/O/鎖/排程）或 queue 被塞爆。
+- 如果你連 `healRoutine` 都找不到啟動點：可能是該 mode/角色（例如 gateway / 特定啟動參數）根本不會跑 MRF；這時候 PutObject 留下 partial 不代表會靠 MRF 補回來（可能要靠 scanner/admin heal）。
+
 - 來源 A：MRF（PutObject 成功但缺片）
   - `cmd/mrf.go`
     - `(*mrfState).addPartialOp(...)`
