@@ -233,3 +233,4 @@
 
 - 2026-04-06 22:00：Troubleshooting：新增 `canceling remote connection` incident note 模板頁（快速蒐證包 + 最短因果鏈 + code anchors）。
 - 2026-04-07 22:00：Troubleshooting：新增 `canceling remote connection` 現場快速 grep pack（journald/ss/iostat/mc admin 最小證據包），讓只有 log 的情境也能把事件整理成可回放筆記。
+- 2026-04-08 14:01 補上 troubleshooting: `canceling remote connection` 的 watchdog 啟動條件（internal/grid/muxserver.go newMuxStream → checkRemoteAlive）。

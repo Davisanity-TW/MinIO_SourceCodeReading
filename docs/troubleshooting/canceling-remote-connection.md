@@ -37,6 +37,31 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 >
 > （補）若你懷疑是「PutObject 留下 partial → MRF queue 補洞 → I/O 壓力」這條鏈：記得 MRF 的 `addPartialOp()`（`cmd/mrf.go`）是 non-blocking 寫入 channel，queue 滿時會直接 drop（best-effort）。延伸：`docs/troubleshooting/mrf-queue-drop.md`。
 
+
+### （補）`checkRemoteAlive()` 是在哪裡被啟動的？（長連線/串流 mux 才會起 watchdog）
+
+以你實際跑的版本為準（以下摘自 workspace 的 `/home/ubuntu/clawd/minio` 近期版本）：
+
+- 檔案：`internal/grid/muxserver.go`
+- 位置：建立 streaming mux（`newMuxStream(...)`）時
+- 條件：`msg.DeadlineMS == 0 || msg.DeadlineMS > lastPingThreshold`
+
+也就是：**沒有 deadline 或 deadline 很長的 streaming RPC**，會額外起一個 goroutine 跑 ~60s 的 watchdog：
+
+```go
+// Remote aliveness check if needed.
+if msg.DeadlineMS == 0 || msg.DeadlineMS > uint32(lastPingThreshold/time.Millisecond) {
+    go func() {
+        wg.Wait()
+        m.checkRemoteAlive()
+    }()
+}
+```
+
+判讀重點：
+- 你看到 `canceling remote connection` 時，表示當下存在 **streaming mux**（長連線/長任務）的 grid handler。
+- 如果現場同時間有 healing/scanner/MRF 或大量 admin/replication 之類長任務，更容易讓這個 watchdog 觸發（不是因為 watchdog 變敏感，而是對端太忙/太卡，`LastPing` 更新不到）。
+
 ## （新增）把 `canceling remote connection` 跟 PutObject/Healing 對齊的「最短因果鏈」（方便寫 incident note）
 
 很多現場會把這條 log 直覺當成「網路斷線」，但若你同時間也看到 **healing/scanner/MRF** 很忙，常見的最短因果鏈其實是：
