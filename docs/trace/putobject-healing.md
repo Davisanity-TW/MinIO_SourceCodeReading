@@ -75,6 +75,21 @@ grep -RIn "newMRFState|initMRF" -n cmd/mrf.go cmd/*.go | head -n 120
 grep -RIn "go .*healRoutine" -n cmd/mrf.go cmd/*.go | head -n 120
 ```
 
+以我目前 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`，commit `b413ff9fd`）為例，`healRoutine()` 的啟動點在 object layer 初始化流程裡：
+- 檔案：`cmd/erasure-server-pool.go`
+- 位置（可 grep）：`bootstrapTrace("initHealMRF", ...)`
+- 實際動作：`go globalMRFState.healRoutine(z)`
+
+你可以直接釘死：
+```bash
+cd /home/ubuntu/clawd/minio
+
+git rev-parse --short HEAD
+
+grep -RIn "initHealMRF" -n cmd/erasure-server-pool.go
+grep -RIn "go globalMRFState\.healRoutine" -n cmd/erasure-server-pool.go
+```
+
 實務判讀（很常用）：
 - 如果你能在 log/pprof 看到 `healRoutine` goroutine 存在，但 `opCh` 很久沒消費：偏向 consumer 被卡住（I/O/鎖/排程）或 queue 被塞爆。
 - 如果你連 `healRoutine` 都找不到啟動點：可能是該 mode/角色（例如 gateway / 特定啟動參數）根本不會跑 MRF；這時候 PutObject 留下 partial 不代表會靠 MRF 補回來（可能要靠 scanner/admin heal）。
