@@ -235,4 +235,4 @@
 - 2026-04-06 22:00：Troubleshooting：新增 `canceling remote connection` incident note 模板頁（快速蒐證包 + 最短因果鏈 + code anchors）。
 - 2026-04-07 22:00：Troubleshooting：新增 `canceling remote connection` 現場快速 grep pack（journald/ss/iostat/mc admin 最小證據包），讓只有 log 的情境也能把事件整理成可回放筆記。
 - 2026-04-08 14:01 補上 troubleshooting: `canceling remote connection` 的 watchdog 啟動條件（internal/grid/muxserver.go newMuxStream → checkRemoteAlive）。
-- 本次新增/補齊：補上 MRF healRoutine() 在目前 workspace 版本的實際啟動點（cmd/erasure-server-pool.go: initHealMRF）。
+- 本次新增/補齊：Trace：PutObject/Healing 補上 `erasure.Heal()` 的實作位置（`cmd/erasure-decode.go`）；Troubleshooting：新增 `canceling remote connection` 的 code anchors 速查頁。

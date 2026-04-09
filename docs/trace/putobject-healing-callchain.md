@@ -285,6 +285,7 @@ grep -RIn "func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
 - reader：`newBitrotReader(...)`
 - writer：`newBitrotWriter(...)`（寫 `.minio.sys/tmp/<tmpID>/<dstDataDir>/part.N`）
 - rebuild：`erasure.Heal(...)`
+  - **實作位置（可釘死）**：`cmd/erasure-decode.go` → `func (e Erasure) Heal(ctx context.Context, writers []io.Writer, readers []io.ReaderAt, totalLength int64, prefer []bool) (derr error)`
 
 5) 原子寫回（tmp → 正式）
 - `disk.RenameData(...)`（storage 介面）
@@ -304,6 +305,9 @@ grep -RIn "disksWithAllParts\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
 grep -RIn "newBitrotReader\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
 grep -RIn "newBitrotWriter\\(" -n cmd/erasure-healing.go cmd/*.go | head -n 20
 grep -RIn "\\.Heal(ctx" -n cmd/erasure-healing.go cmd/*.go | head -n 20
+
+# Erasure.Heal() 的實作（RS rebuild）
+grep -RIn "func (e Erasure) Heal" -n cmd/erasure-decode.go
 
 grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/erasure-healing.go | head -n 80
 ```
