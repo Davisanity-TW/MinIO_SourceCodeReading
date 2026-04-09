@@ -236,3 +236,4 @@
 - 2026-04-07 22:00：Troubleshooting：新增 `canceling remote connection` 現場快速 grep pack（journald/ss/iostat/mc admin 最小證據包），讓只有 log 的情境也能把事件整理成可回放筆記。
 - 2026-04-08 14:01 補上 troubleshooting: `canceling remote connection` 的 watchdog 啟動條件（internal/grid/muxserver.go newMuxStream → checkRemoteAlive）。
 - 本次新增/補齊：Trace：PutObject/Healing 補上 `erasure.Heal()` 的實作位置（`cmd/erasure-decode.go`）；Troubleshooting：新增 `canceling remote connection` 的 code anchors 速查頁。
+- 2026-04-09 22:00：Troubleshooting：新增 `canceling remote connection` root-cause map（I/O/CPU/網路/重啟）與建議排查順序。
