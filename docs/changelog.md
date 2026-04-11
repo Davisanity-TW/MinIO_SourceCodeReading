@@ -1,3 +1,4 @@
+- 2026-04-12 06:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection.md` 追加一節「從 peer-rest（grid RPC）handler 反推是哪個 streaming mux 在撐著長連線」：提供 peer-rest handler grep 與 internal trace jq 範例，方便把 `canceling remote connection` 的 time window 對齊到實際 handler 熱點。
 - 2026-04-11 22:00（Asia/Taipei）：Troubleshooting：`canceling-remote-connection-code-anchors.md` 補齊 streaming mux watchdog `checkRemoteAlive()` 的啟動條件與 OpPing→LastPing 更新鏈的最短 grep 錨點，方便把「60s 心跳沒更新」快速分流成網路 vs 對端忙（I/O/GC/背景任務）。
 - 2026-04-09 06:00（Asia/Taipei）：Trace：新增 `docs/trace/healobject.md`，把 HealObject（MRF/scanner/admin 入口→ObjectLayer→`(*erasureObjects).healObject`）補成可釘死的 5 步驟 call chain（read meta/quorum/RS rebuild/tmp/RenameData），方便跟 PutObject/Healing 共振與 `canceling remote connection` 一起對齊。
 - 2026-04-07 14:00（Asia/Taipei）：Trace：`putobject-healing.md` 補一節「MRF 狀態機 lifecycle」：`globalMRFState` 初始化/建構與 `healRoutine()` 的啟動點怎麼用 grep 釘死（避免只看到 enqueue，但不知道 consumer 何時/在哪裡起來）。

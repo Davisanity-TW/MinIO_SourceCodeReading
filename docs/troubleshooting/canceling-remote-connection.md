@@ -1373,3 +1373,39 @@ journalctl -u minio -n 200 --no-pager
 - 常見熱點：`sha256`/`s2`/`kms`/`erasure.Encode`/`erasure.Heal`/`rename`/`readAllFileInfo`。
 
 ---
+
+---
+
+## 7) （新增）常見「是哪個 peer RPC 在撐著 streaming mux」：先從 peer-rest handler 下手
+
+> 這條 log 本身不會印 subroute/handler id，所以在現場要反推「到底是哪個功能在用這條 streaming mux」時，最實用的切入點通常是 **peer-rest（grid RPC）**。
+>
+> 經驗上，`canceling remote connection` 大量出現的時間窗，常同時伴隨：
+> - healing/scanner/rebalance 相關的 peer 狀態輪詢（BackgroundHealStatus / HealBucket / rebalance status）
+> - 或 replication/site-replication 的跨節點 streaming 流量
+
+### 7.1 最短 grep：列出 peer-rest server 端有哪些 handler（用來對照 trace/pprof）
+在你跑的 MinIO source tree：
+```bash
+cd /path/to/minio
+
+# 列出 peer-rest server 端 handler（通常在 cmd/peer-rest-server.go）
+grep -RIn "type peerRESTServer" -n cmd/peer-rest-server.go
+
+grep -RIn "Handler" -n cmd/peer-rest-server.go | head -n 120
+
+# 背景 heal status / heal bucket（兩個最常在 healing busy 時被放大）
+grep -RIn "BackgroundHealStatus" -n cmd/peer-rest-server.go cmd/peer-rest-client.go
+grep -RIn "HealBucket" -n cmd/peer-rest-server.go
+```
+
+### 7.2 你要的是「同時間窗對齊」：用 internal trace 把 handler 熱點列出來
+```bash
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|startswith("grid.") or (.funcName|contains("peer")))
+           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
+```
+
+判讀：
+- 若同時間窗 `peer-rest` / `grid.*` handler duration 變長，且 remote 節點 I/O latency 高：通常代表「資源/I/O 壓力 → ping handler 排隊」的路徑更可信。
+- 若 duration 不長、但 TCP retrans/RTO 明顯：偏向網路/丟包/conntrack/MTU。
