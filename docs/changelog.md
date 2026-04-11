@@ -197,6 +197,8 @@
 
 - 2026-02-08 20:00：Trace：PutObject vs Healing 頁補齊 `cmd/erasure-healing.go: healObject()` 後半段的精準函式/呼叫點（`erasure.Heal()`、`.minio.sys/tmp/<tmpID>`、`disk.RenameData()`），方便把「重建」與「寫回」的瓶頸對準到可下斷點的位置。
 
+- 2026-04-11 14:00：Trace：新增 `HealObject()` 呼叫鏈速查頁（MRF/scanner/admin → pool→sets→objects→healObject），補齊最短 grep 錨點，方便把 PutObject partial 補洞與 healing 寫回（RenameData）對齊。
+
 - 2026-04-02 14:00：Healing：補齊 admin heal API（`/minio/admin/v3/heal*`）在 server 端的 handler 分流（start token / poll status / stop）與 `globalAllHealState.PopHealStatusJSON()` 的追碼錨點，方便把 `mc admin heal --json` 回傳對回內部流程。
 
 - 2026-02-07 20:02：Trace：新增 PutObject vs Healing 對照頁（把 PutObject 的 tmp/rename/commit 與 healObject 的讀→重建→寫回串起來）；Troubleshooting：`canceling remote connection` 增加與 healing/scanner/rebalance 高負載的快速關聯段落；首頁修正「系統總覽」連結。
