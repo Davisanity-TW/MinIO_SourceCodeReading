@@ -15,6 +15,38 @@
     - 條件：`time.Since(time.Unix(LastPing,0)) > lastPingThreshold`
     - 動作：log `canceling remote connection ... not seen for ...` → `m.close()`
 
+### 1.1 這個 watchdog 是誰啟動的？（通常只針對 streaming/長連線 mux）
+`checkRemoteAlive()` 不是全域固定 tick 掃描，而是 **在建立 streaming mux 時**（MuxID != 0）視條件啟動。
+
+- 檔案：`internal/grid/muxserver.go`
+  - 典型 callsite：`newMuxStream(...)` 之類建立 streaming mux 的地方
+  - 條件常見是：`msg.DeadlineMS == 0 || msg.DeadlineMS > lastPingThreshold`
+
+一鍵釘死（避免版本差異搬家）：
+```bash
+cd /path/to/minio
+
+grep -RIn "checkRemoteAlive\(" -n internal/grid/muxserver.go | head -n 120
+# 往上看 10~30 行，通常能看到建立 streaming mux 時 go 起 watchdog 的條件判斷
+```
+
+### 1.2 LastPing 是「哪裡更新」的？（server 收到 OpPing）
+你要回答的是：remote 端的 ping 是沒送、送了但丟包，還是送到了但 server handler 跑不動。
+
+最短可 grep 的接收鏈：
+- `internal/grid/connection.go`
+  - `(*Connection).handleMsg()`（switch/case `OpPing`）→ `handlePing(...)`
+- `internal/grid/muxserver.go`
+  - `(*muxServer).ping(...)`：`atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
+
+```bash
+cd /path/to/minio
+
+grep -RIn "case OpPing" -n internal/grid/connection.go
+grep -RIn "handlePing" -n internal/grid/connection.go | head -n 80
+grep -RIn "LastPing" -n internal/grid/muxserver.go | head -n 120
+```
+
 ### 閾值來源（常見 ~60s）
 
 - `internal/grid/grid.go`
