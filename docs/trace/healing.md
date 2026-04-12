@@ -218,6 +218,59 @@ grep -RIn "func (m \*mrfState) healRoutine" -n cmd/mrf.go
   - 觀察點：`func (er *erasureObjects) healObject(...)` 內對 `erasure.Heal(...)` 的呼叫
 - 寫回（tmp → 正式資料目錄的原子切換）：
   - 介面：`StorageAPI.RenameData(...)`
+
+---
+
+## 2)（補）HealObject 真正落地在哪些 receiver？（把 healing 的「分層跳板」釘死）
+
+> 你在 incident 時常需要回答：「這次 heal 是誰發起的（scanner/MRF/admin）不重要，反正最後都是同一條 `HealObject()` 主線」；這節把 **ObjectLayer → sets → erasureObjects** 的跳板釘成最短 grep 錨點。
+
+**最短 call chain（大多數 erasure 部署都長這樣）：**
+
+1) `cmd/erasure-server-pool.go`
+- `func (z *erasureServerPools) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+
+2) `cmd/erasure-sets.go`
+- `func (s *erasureSets) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`
+
+3) `cmd/erasure-healing.go`
+- `func (er erasureObjects) HealObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`（常見是 wrapper/前置）
+- `func (er *erasureObjects) healObject(ctx, bucket, object, versionID string, opts madmin.HealOpts) (madmin.HealResultItem, error)`（真正做事的 heavy path）
+
+> 小提醒：不同版本可能是 `er erasureObjects` 或 `er *erasureObjects` receiver（值/指標）略有差；grep 時不要太死。
+
+**一鍵釘死（對你跑的版本）：**
+```bash
+cd /path/to/minio
+
+grep -RIn "func (z \*erasureServerPools) HealObject" -n cmd | head
+grep -RIn "func (s \*erasureSets) HealObject" -n cmd | head
+
+# wrapper vs heavy path
+grep -RIn "HealObject(ctx, bucket, object" -n cmd/erasure-healing.go | head -n 50
+grep -RIn "healObject(ctx, bucket, object" -n cmd/erasure-healing.go | head -n 50
+```
+
+### 2.1（補）寫回到底是「誰」在 rename？（從 healing 追到 StorageAPI）
+
+如果你要把 heal 的「最後一次落盤」釘死到最底層（通常用來對齊 disk latency / fsync / inode contention）：
+
+- interface：`cmd/storage-interface.go`
+  - `type StorageAPI interface { RenameData(ctx, srcVolume, srcPath, dstVolume, dstPath string, opts RenameOptions) error ... }`
+- 具體實作（erasure + 本地磁碟常見）：`cmd/xl-storage.go`
+  - `func (s *xlStorage) RenameData(ctx, srcVolume, srcPath, dstVolume, dstPath string, opts RenameOptions) error`
+
+快速定位：
+```bash
+cd /path/to/minio
+
+grep -RIn "type StorageAPI interface" -n cmd/storage-interface.go
+grep -RIn "RenameData\(" -n cmd/storage-interface.go
+
+grep -RIn "func \(s \*xlStorage\) RenameData" -n cmd/xl-storage.go
+```
+
+> 實務判讀：如果你看到 healing latency 明顯集中在 rename/fsync（而不是 erasure.Heal 的 RS rebuild），通常表示是「metadata/目錄/檔名操作」在卡（inode/dir lock/磁碟同步），不一定是純吞吐不足。
   - 實作：`(*xlStorage).RenameData(...)`
 
 快速定位（避免行號飄）：

@@ -243,3 +243,5 @@
 - 2026-04-08 14:01 補上 troubleshooting: `canceling remote connection` 的 watchdog 啟動條件（internal/grid/muxserver.go newMuxStream → checkRemoteAlive）。
 - 本次新增/補齊：Trace：PutObject/Healing 補上 `erasure.Heal()` 的實作位置（`cmd/erasure-decode.go`）；Troubleshooting：新增 `canceling remote connection` 的 code anchors 速查頁。
 - 2026-04-09 22:00：Troubleshooting：新增 `canceling remote connection` root-cause map（I/O/CPU/網路/重啟）與建議排查順序。
+
+- 2026-04-13 06:01：Trace/Healing：補上 HealObject 分層跳板（erasureServerPools → erasureSets → erasureObjects）與 StorageAPI.RenameData / xlStorage.RenameData 的最短 grep 錨點，方便把 healing 寫回延遲直接對齊到 storage rename/fsync。
