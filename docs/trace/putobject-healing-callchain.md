@@ -7,6 +7,7 @@
 延伸閱讀（更完整的細節/背景/I/O 共振）：
 - `docs/trace/putobject-healing.md`
 - `docs/troubleshooting/canceling-remote-connection.md`
+- `docs/troubleshooting/canceling-remote-connection-codepath.md`（把那句 log 釘到 `internal/grid` 的 code anchors）
 
 ---
 

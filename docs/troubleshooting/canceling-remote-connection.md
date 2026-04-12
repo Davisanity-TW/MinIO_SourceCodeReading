@@ -37,6 +37,8 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 >
 > （補）若你懷疑是「PutObject 留下 partial → MRF queue 補洞 → I/O 壓力」這條鏈：記得 MRF 的 `addPartialOp()`（`cmd/mrf.go`）是 non-blocking 寫入 channel，queue 滿時會直接 drop（best-effort）。延伸：`docs/troubleshooting/mrf-queue-drop.md`。
 
+> （補）如果你只是想快速把這句 log 對回 MinIO `internal/grid` 的實際檔案/函式/變數，見：`docs/troubleshooting/canceling-remote-connection-codepath.md`。
+
 
 ### （補）`checkRemoteAlive()` 是在哪裡被啟動的？（長連線/串流 mux 才會起 watchdog）
 
