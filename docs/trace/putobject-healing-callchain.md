@@ -360,6 +360,11 @@ PutObject 與 Healing 最容易共振的點：兩者最後都會落到 storage r
 - `cmd/erasure-object.go: renameData(...)` 會對 `onlineDisks[]` 逐顆呼叫 `disk.RenameData(...)`
 - 換句話說：PutObject 的「tmp → 正式」最後也會落到同一個 storage 介面 `StorageAPI.RenameData()`
 
+#### （補）`renameData()` / `commitRenameDataDir()` 的「精準函式錨點」
+如果你在不同 RELEASE tag 間跳轉，最常卡住的是「rename/commit 的 receiver/檔案名有沒有變」。建議在筆記裡固定記兩個 signature（用來 grep）：
+- `cmd/erasure-object.go`：`func renameData(`（回傳值/參數可能改動，但函式名很穩）
+- `cmd/erasure-object.go`：`commitRenameDataDir`（receiver 可能是 `erasureObjects` 或 `*erasureObjects`）
+
 可釘死的 grep 錨點（在你跑的版本）：
 ```bash
 cd /path/to/minio
@@ -367,6 +372,9 @@ cd /path/to/minio
 # PutObject 的 renameData() 定義與主要呼叫點
 grep -n "^func renameData" cmd/erasure-object.go
 grep -n "renameData(ctx" cmd/erasure-object.go | head -n 40
+
+# commitRenameDataDir 的定義與呼叫點
+grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 120
 
 # renameData() 內部逐 disk 的 storage rename
 grep -n "\\.RenameData(ctx" cmd/erasure-object.go | head -n 80

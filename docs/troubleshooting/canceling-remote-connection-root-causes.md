@@ -93,6 +93,28 @@
 快速驗證：
 - K8s events / systemd journal / container logs
 
+### Bucket E：時鐘/NTP 跳動（少見但很容易誤判）
+典型徵兆：
+- `not seen for ...` 的 duration 不是常見的 ~60s，而是突然變得很短/很長
+- 同時間窗系統有 time step/slew（chrony/ntpd 調整）
+
+快速驗證：
+- `timedatectl status`
+- `chronyc tracking` / `chronyc sources -v`
+
+原因：server 端 watchdog 是用 `time.Since(time.Unix(LastPing,0))` 估算；若節點時間被大幅校正，這個差值可能被放大或縮小。
+
+### Bucket F：Go runtime/排程飢餓（CPU throttling/GC/鎖競爭造成 ping handler 排不到）
+典型徵兆：
+- retrans 不明顯，但同時間窗 p99 latency 飛、goroutine 暴增
+- container 有 CPU throttling（cgroup 配額太緊）或 host 有 CPU steal
+- pprof 顯示 goroutine 大量卡在 rename/fsync/metadata 或 mutex
+
+快速驗證：
+- `kubectl top pod/node` + 檢查 CPU limit（是否過低）
+- node：`top`/`pidstat -u 1`（是否 throttling/steal）
+- 若能抓 pprof：`goroutine`/`mutex`/`block` profile
+
 ---
 
 ## 3) 建議的現場排查順序（最省時間）
