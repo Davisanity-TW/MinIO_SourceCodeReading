@@ -54,6 +54,20 @@ grep -RIn "ErrDisconnected" internal/grid
 - `ErrDisconnected`（client 自己放棄）常見 ~30s
 - `canceling remote connection`（server watchdog）常見 ~60s
 
+建議你把兩邊 anchor 都釘死（避免版本差異）：
+```bash
+cd /path/to/minio
+
+grep -RIn "ErrDisconnected" -n internal/grid | head
+grep -RIn "canceling remote connection" -n internal/grid | head
+
+grep -RIn "checkRemoteAlive" -n internal/grid/muxserver.go
+grep -RIn "clientPingInterval" -n internal/grid/grid.go internal/grid/*.go
+```
+
+延伸閱讀（同 repo）：
+- `docs/troubleshooting/canceling-remote-connection.md`（server 端 watchdog：60s 沒看到 ping 會 cancel）
+
 ---
 
 ## 3) 10 分鐘排查 SOP（最省時間的順序）
