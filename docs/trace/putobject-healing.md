@@ -1024,3 +1024,51 @@ grep -RIn "RenameData\(" -n cmd/storage-interface.go cmd/xl-storage.go
 # Healing 寫回點
 grep -RIn "\.RenameData\(" -n cmd/erasure-healing.go | head -n 50
 ```
+
+---
+
+## 11)（本輪補）跟 `canceling remote connection` 的 code 錨點（PutObject/Healing 共振時最常用）
+
+> 這段是給 incident note 用的「最短可跳轉清單」：把 PutObject/Healing 造成的 I/O 壓力，如何一路對到 grid watchdog 的那行 log。
+> （詳細排查方向見：`docs/troubleshooting/canceling-remote-connection.md`）
+
+### 11.1 grid watchdog（印出 `canceling remote connection` 的地方）
+- `minio/internal/grid/muxserver.go`
+  - `(*muxServer).checkRemoteAlive()`：判定 `LastPing` 超過 threshold → log → `m.close()`
+  - `lastPingThreshold = 4 * clientPingInterval`
+- `minio/internal/grid/grid.go`
+  - `clientPingInterval = 15 * time.Second`（因此多數版本 threshold 約 60s）
+- `minio/internal/grid/connection.go`
+  - `(*Connection).handleMsg()` / `handlePing()`：收到 `OpPing` 時，會導向 `(*muxServer).ping()` 更新 `LastPing`
+
+建議你在「線上實際版本」直接釘 anchor（避免行號漂移）：
+```bash
+cd /path/to/minio
+
+grep -RIn "canceling remote connection" -n internal/grid | head
+
+grep -RIn "checkRemoteAlive" -n internal/grid | head
+
+grep -RIn "clientPingInterval" -n internal/grid | head
+```
+
+### 11.2 PutObject 留 partial → 觸發 MRF/healing 的入口
+- `cmd/erasure-object.go`
+  - `erasureObjects.putObject()`：commit 後若偵測部分 disk offline，會 `addPartial()` / `globalMRFState.addPartialOp(...)`
+- `cmd/mrf.go`
+  - `(*mrfState).addPartialOp(...)`：non-blocking enqueue（滿了會 drop）
+  - `(*mrfState).healRoutine(...)`：消費 queue → 呼叫 object layer `HealObject(...)`
+
+### 11.3 真正 I/O 很重的修復段（最容易讓 ping handler 排隊的點）
+- `cmd/erasure-healing.go`
+  - `readAllFileInfo(...)`：fan-out 讀 `xl.meta`
+  - `erasure.Heal(...)`：RS 重建（大量讀/寫）
+  - `disk.RenameData(...)`：寫回/rename（metadata ops + fsync）
+- `cmd/xl-storage.go`
+  - `(*xlStorage).RenameData(...)`：最終落地（常是 syscall 層瓶頸）
+
+> 實務上你只要把同時間窗（T±5m）的：
+> - `canceling remote connection ... not seen for ~60s`
+> - healing/scanner/MRF 活躍（trace/metrics/log）
+> - remote disk latency 尖峰（`iostat -x`）
+> 三者對齊，就能快速把因果收斂到「資源/I/O 壓力導致 ping 處理延遲」或「網路丟包」兩條主路徑。
