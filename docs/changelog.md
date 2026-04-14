@@ -1,3 +1,4 @@
+- 2026-04-15 06:00（Asia/Taipei）：Troubleshooting：新增 `grid-peer-rpc-timeouts.md`，整理 grid/peer RPC 常見錯誤（`ErrDisconnected`/`context deadline exceeded`/`connection reset by peer`）的「訊息出現端（client/server）」與最小蒐證/分流方式，方便跟 `canceling remote connection` 同時間窗一起判讀。
 - 2026-04-14 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling-remote-connection-sigquit-stackdump.md`，整理用 SIGQUIT 快速抓 Go goroutine dump 的最小 SOP，方便在「對端忙（I/O/GC/鎖/背景任務）」假說下做低門檻蒐證。
 - 2026-04-14 14:00（Asia/Taipei）：Troubleshooting：更新 `mrf-queue-drop.md`，補上 `mrfOpsQueueSize`（queue buffer size）常數錨點，方便估量 MRF queue 塞滿後的 drop 風險。
 - 2026-04-14 06:00（Asia/Taipei）：Troubleshooting：更新 `canceling-remote-connection-root-causes.md`，補上「NTP/時鐘跳動」與「Go runtime/排程飢餓（throttling/GC/鎖競爭）」兩個常被忽略但會誤判的 root-cause bucket；Trace：`putobject-healing-callchain.md` 補上 `renameData()`/`commitRenameDataDir()` 的 signature 錨點（跨版本跳轉更穩）。
