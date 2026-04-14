@@ -31,6 +31,19 @@ func (m *mrfState) addPartialOp(op partialOperation) {
 - 「產生 partial」≠「一定會被補洞」
 - 當 cluster 正在重度 I/O（healing/scanner/rebalance）時，MRF 的消費速度跟不上，很容易發生 drop
 
+### 1.1（補）queue buffer 多大？（方便估量「會不會塞爆」）
+
+在我 workspace 的 MinIO source（`/home/ubuntu/clawd/minio`）目前版本：
+- `cmd/mrf.go`：`const mrfOpsQueueSize = 100000`
+
+這通常會用來初始化：`make(chan partialOperation, mrfOpsQueueSize)`。
+
+實務判讀：
+- 100k 聽起來很大，但 **高寫入 + 多盤/多節點偶發 offline** 的情境，partial 事件是可能在短時間爆量的。
+- 一旦消費端（`mrfState.healRoutine`）被 I/O/CPU 拖慢，channel 很快就會滿；滿了之後「新進來的 partial」就會直接 drop。
+
+> 注意：不同 RELEASE tag / fork 可能會調整 `mrfOpsQueueSize`（或初始化位置），排查時以你線上版本 `grep` 到的常數為準。
+
 ---
 
 ## 2) partialOperation 代表什麼？
