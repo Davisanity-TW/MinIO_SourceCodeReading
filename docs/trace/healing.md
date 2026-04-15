@@ -79,6 +79,39 @@ MinIO 啟動後通常同時存在兩套「會丟 heal 任務」的來源：
 3) 對每顆 disk 起 goroutine：
    - `healFreshDisk(ctx, z, diskEndpoint)`
 
+### 1.2.1（新增）`healFreshDisk()` 的「實際落地」：新盤/回復事件 heal 會做哪些事？
+
+> 目的：你在現場看到「某顆 disk 回來後，cluster 開始做一波 healing」時，想回答：**它到底是 heal format？heal bucket？heal object？還是掃描整個 set？**
+>
+> 這段建議用「grep 錨點」釘死到你線上版本（RELEASE tag），因為 `healFreshDisk` 內部流程在不同版本可能拆成更多 helper。
+
+以 upstream 慣例（檔名/概念）來說，`healFreshDisk(ctx, z, diskEndpoint)` 通常會做：
+- 把該 endpoint 對應到 `poolIdx/setIdx/diskIdx`（定位這顆 disk 在 erasure layout 的位置）
+- 觸發 set/pool 等級的 healing（針對缺失資料做補齊），常見會落到：
+  - `(*erasureServerPools).HealFormat(...)` / `(*erasureSets).HealFormat(...)`
+  - `(*erasureServerPools).HealBucket(...)` / `(*erasureSets).HealBucket(...)`
+  - `(*erasureServerPools).HealObject(...)` / `(*erasureSets).HealObject(...)`
+- 更新 background heal state（`.healing.bin` / tracker）供 admin/console 查詢
+
+**在你自己的 MinIO source tree 釘死（最短 grep 套件）：**
+```bash
+cd /path/to/minio
+
+# healFreshDisk 的定義與呼叫點
+grep -RIn "func healFreshDisk" -n cmd/background-newdisks-heal-ops.go cmd/*.go
+grep -RIn "healFreshDisk\(" -n cmd/background-newdisks-heal-ops.go cmd/*.go | head -n 50
+
+# 看它最後到底呼叫哪些 heal（format/bucket/object）
+grep -RIn "HealFormat\(" -n cmd/background-newdisks-heal-ops.go | head -n 80
+grep -RIn "HealBucket\(" -n cmd/background-newdisks-heal-ops.go | head -n 80
+grep -RIn "HealObject\(" -n cmd/background-newdisks-heal-ops.go | head -n 80
+
+# background heal tracker（.healing.bin）通常會在這些字串附近
+grep -RIn "healing\.bin|healingTracker|BackgroundHeal" -n cmd/background-*-heal-ops.go cmd/*.go | head -n 200
+```
+
+> 實務建議：把 `healFreshDisk` 內「迴圈掃描範圍」釘死（是全 bucket？全 object？還是只掃 metacache/part？）再去對照你現場的 I/O 圖，通常就能判斷「為什麼這次回復會打爆磁碟」。
+
 ### 1.3 `initBackgroundHealing()`：背景 healer worker（不是新盤）
 除了「新盤/回復」驅動的 healing 之外，MinIO 還會在啟動後啟動一組 **background healer**，用來處理各種 healing task（bucket/object/format）。
 

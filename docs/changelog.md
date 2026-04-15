@@ -253,3 +253,4 @@
 - 2026-04-13 06:01：Trace/Healing：補上 HealObject 分層跳板（erasureServerPools → erasureSets → erasureObjects）與 StorageAPI.RenameData / xlStorage.RenameData 的最短 grep 錨點，方便把 healing 寫回延遲直接對齊到 storage rename/fsync。
 - 2026-04-13 22:00（Asia/Taipei）：Troubleshooting：更新 `grid-errdisconnected.md`，補上 `ErrDisconnected`（client ~30s） vs `canceling remote connection`（server ~60s）兩端 watchdog 的一鍵 grep 錨點，並加上延伸閱讀連結。
 - 2026-04-13 14:00 (Asia/Taipei): 補上 PutObject/Healing 與 grid canceling remote connection 的最短 code 錨點與 grep 清單（便於 incident note 快速對齊）。
+- 2026-04-16 06:00（Asia/Taipei）：Trace/Healing：補上 auto drive healing（monitorLocalDisksAndHeal → healFreshDisk）落地行為說明與最短 grep 錨點，方便釘死「新盤/回復事件」到底呼叫 HealFormat/HealBucket/HealObject 哪條線。
