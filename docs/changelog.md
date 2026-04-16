@@ -255,3 +255,5 @@
 - 2026-04-13 22:00（Asia/Taipei）：Troubleshooting：更新 `grid-errdisconnected.md`，補上 `ErrDisconnected`（client ~30s） vs `canceling remote connection`（server ~60s）兩端 watchdog 的一鍵 grep 錨點，並加上延伸閱讀連結。
 - 2026-04-13 14:00 (Asia/Taipei): 補上 PutObject/Healing 與 grid canceling remote connection 的最短 code 錨點與 grep 清單（便於 incident note 快速對齊）。
 - 2026-04-16 06:00（Asia/Taipei）：Trace/Healing：補上 auto drive healing（monitorLocalDisksAndHeal → healFreshDisk）落地行為說明與最短 grep 錨點，方便釘死「新盤/回復事件」到底呼叫 HealFormat/HealBucket/HealObject 哪條線。
+
+- 2026-04-16 22:00（Asia/Taipei）：Trace：PutObject/Healing 針對 PutObject/Healing 共振時的 grid `canceling remote connection` 補上現場「共振證據鏈」排查頁（新頁：canceling-remote-connection-with-putobject-healing.md）。
