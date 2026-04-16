@@ -1,3 +1,4 @@
+- 2026-04-16 14:00（Asia/Taipei）：Troubleshooting：更新 `canceling-remote-connection-root-causes.md`，補上「client ~30s vs server ~60s」兩端 watchdog 閾值差異的判讀段落，方便把同一事件窗的兩邊 log 對齊。
 - 2026-04-15 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling-remote-connection-observability.md`，補上把單行 `canceling remote connection` 對齊到 Prometheus（retrans/I/O/CPU throttling/GC）、MinIO internal trace 與最小蒐證包的觀測筆記。
 - 2026-04-15 14:00（Asia/Taipei）：Troubleshooting：新增 `canceling-remote-connection-quick-triage.md`，把 `canceling remote connection` 的現場排查濃縮成「三件套（ss/iostat/internal trace）→ 判讀小抄 → incident note 最短因果鏈模板」。
 - 2026-04-15 06:00（Asia/Taipei）：Troubleshooting：新增 `grid-peer-rpc-timeouts.md`，整理 grid/peer RPC 常見錯誤（`ErrDisconnected`/`context deadline exceeded`/`connection reset by peer`）的「訊息出現端（client/server）」與最小蒐證/分流方式，方便跟 `canceling remote connection` 同時間窗一起判讀。

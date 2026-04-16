@@ -127,7 +127,30 @@
 
 ---
 
-## 4) 事件筆記要記什麼（讓下次更快）
+## 4) 你在 log 看到的「~30s / ~60s」差異是正常的（client vs server watchdog）
+
+同一個事件窗裡，你常會看到：
+- **client 端**先報 `ErrDisconnected` / timeout（大約 **30s** 左右）
+- **server 端**稍後才印 `canceling remote connection ... not seen for ~60s`
+
+這不是矛盾，通常是因為兩端 watchdog 閾值不同：
+- client 端常以 `clientPingInterval*2` 當作「沒看到 pong 就斷」的門檻
+- server 端常以 `lastPingThreshold = 4*clientPingInterval` 當作「沒看到 ping 就關」的門檻
+
+因此排障時建議用同一個時間窗把兩端 log 對齊（±2 分鐘），並同時收集：
+- healing/scanner/MRF 是否活躍
+- disk latency（rename/fsync 類型延遲）
+- CPU throttling / goroutine 排隊
+
+對應 code 錨點（方便你在不同 RELEASE tag 釘死）：
+- `internal/grid/muxserver.go`：`checkRemoteAlive()` / `LastPing` / `lastPingThreshold`
+- `internal/grid/muxclient.go`：`LastPong` / `ErrDisconnected`
+
+（完整 grep 清單可直接看：`docs/trace/putobject-healing-callchain.md` 的第 6 節。）
+
+---
+
+## 5) 事件筆記要記什麼（讓下次更快）
 
 建議固定記錄欄位：
 - 發生時間（含時區）
