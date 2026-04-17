@@ -164,6 +164,32 @@ grep -n "len(u\\.versions" cmd/mrf.go
   - `func (m *mrfState) healRoutine(z *erasureServerPools)`
     - 出隊後呼叫 helper `healObject(...)` → 最終會進 `z.HealObject(...)`
 
+### 2.1.1（補）MRF lifecycle：`healRoutine()` 是什麼時候被啟動的？（避免只看到 enqueue 但 consumer 根本沒起）
+
+> 現場常見誤判：你在 PutObject 端看到 `addPartial()` / `globalMRFState.addPartialOp(...)`，就直覺認為「MRF 一定會開始補洞」；但實務上你要先確認 **MRF 的 consumer goroutine** 在你跑的 mode/版本裡確實有被啟動。
+>
+> 這節提供一組「不用猜行號」的 grep 錨點：
+> - 先釘 `globalMRFState` 的宣告/初始化（queue 大小、型別）
+> - 再釘 `healRoutine()` 的啟動點（`go globalMRFState.healRoutine(...)`）
+
+在你線上對應的 MinIO source tree：
+```bash
+cd /path/to/minio
+
+# 1) globalMRFState 在哪裡宣告/初始化
+grep -RIn "globalMRFState" -n cmd | head -n 120
+
+# 2) healRoutine() 何時被 go 起來（啟動點最重要）
+grep -RIn "go .*globalMRFState\.healRoutine" -n cmd | head -n 120
+
+# 3) 典型啟動點會跟 bootstrap/init trace 字串靠在一起（依版本可能叫 initHealMRF 或類似名稱）
+grep -RIn "initHealMRF|healRoutine\(z \*erasureServerPools\)" -n cmd/erasure-server-pool.go cmd/*.go | head -n 120
+```
+
+實務判讀：
+- 如果你能在 goroutine dump/pprof 裡看到 `mrfState.healRoutine` 存在，但 queue 一直不消費：偏向 consumer 被 I/O/鎖/排程卡住（或 healSleeper 節流）。
+- 如果你完全找不到啟動點：可能是該部署模式/角色根本不跑 MRF（例如 gateway/特殊啟動參數），這時候 partial 可能要靠 scanner/admin heal 才補得回來。
+
 ### 2.2 Scanner 直接觸發 HealObject
 
 - `cmd/data-scanner.go`
