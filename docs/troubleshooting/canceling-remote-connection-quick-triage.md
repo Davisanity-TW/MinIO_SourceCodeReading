@@ -9,6 +9,8 @@
 > 更完整背景與 code anchors：
 > - `docs/troubleshooting/canceling-remote-connection.md`
 > - `docs/troubleshooting/canceling-remote-connection-codepath.md`
+>
+> （補）若同時間窗也有 PutObject latency 變差、或 healing/scanner/MRF 明顯活躍，建議直接一起對照：`docs/trace/putobject-healing.md`（PutObject partial → MRF → HealObject → `RenameData()` 的 I/O 共振鏈）。
 
 ---
 

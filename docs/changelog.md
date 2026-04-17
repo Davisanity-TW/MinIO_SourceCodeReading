@@ -1,3 +1,4 @@
+- 2026-04-17 22:00（Asia/Taipei）：Troubleshooting：更新 `docs/troubleshooting/canceling-remote-connection-quick-triage.md`，補上「同時間窗 PutObject/healing/MRF 共振」的快速交叉對照連結（直接跳 PutObject partial → MRF → HealObject → RenameData）。
 - 2026-04-17 14:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-callchain.md`，補上 `HealObject()` 的落地呼叫鏈（ObjectLayer→`(*erasureObjects).healObject`→RS rebuild→`RenameData`）與一鍵 grep 錨點，方便把 healing I/O 壓力跟 PutObject/`canceling remote connection` 共振更快對齊。
 - 2026-04-16 14:00（Asia/Taipei）：Troubleshooting：更新 `canceling-remote-connection-root-causes.md`，補上「client ~30s vs server ~60s」兩端 watchdog 閾值差異的判讀段落，方便把同一事件窗的兩邊 log 對齊。
 - 2026-04-15 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling-remote-connection-observability.md`，補上把單行 `canceling remote connection` 對齊到 Prometheus（retrans/I/O/CPU throttling/GC）、MinIO internal trace 與最小蒐證包的觀測筆記。
