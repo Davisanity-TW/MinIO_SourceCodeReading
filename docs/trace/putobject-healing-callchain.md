@@ -219,6 +219,54 @@ grep -RIn "HealObject\(" -n cmd/admin-handlers.go | head -n 80
 
 > 註：不同 RELEASE tag 可能會新增/調整 handler 名稱；但 `peer-rest-client/server.go` + `grid.Handler*` 這組 pattern 跨版本通常很穩。
 
+---
+
+## 2.3 HealObject() 的「落地」：ObjectLayer.HealObject → erasureObjects.healObject → RS rebuild + RenameData
+
+> 目的：把 `HealObject(...)` 這個「看起來很高階」的 API，一路釘到真正吃 I/O 的地方（RS rebuild、寫回、rename/fsync）。
+>
+> 你在排查 healing 跟 PutObject latency / `canceling remote connection` 共振時，最常需要回答兩件事：
+> 1) **到底是誰在呼叫 HealObject**（MRF / scanner / admin heal）
+> 2) **HealObject 裡面最重的 I/O 在哪**（通常是 `Erasure.Heal` + `RenameData` + metadata fan-out）
+
+### 2.3.1 入口：ObjectLayer.HealObject（multi-pool → sets → objects）
+
+常見錨點（不同版本可能會在 `cmd/erasure-server-pool.go` / `cmd/erasure-sets.go` / `cmd/erasure-healing.go` 之間調整，但 receiver 名稱通常很穩）：
+
+```bash
+cd /path/to/minio
+
+# 從 interface 呼叫端往下追
+grep -RIn "HealObject(ctx" -n cmd | head -n 40
+
+# ObjectLayer 實作（multi-pool / pool / sets）
+grep -RIn "func (z \*erasureServerPools) HealObject" -n cmd | head -n 40
+grep -RIn "func (p \*erasureServerPool) HealObject" -n cmd | head -n 40
+grep -RIn "func (s \*erasureSets) HealObject" -n cmd | head -n 40
+```
+
+### 2.3.2 真正的 heavy path：`erasureObjects.healObject`（metadata + RS + writeback/rename）
+
+```bash
+cd /path/to/minio
+
+# healing 主檔通常在這
+grep -RIn "func (er \*erasureObjects) healObject" -n cmd/erasure-healing.go
+
+# metadata fan-out / quorum（讀各 disk 的 FileInfo）
+grep -RIn "readAllFileInfo\(" -n cmd/erasure-healing.go cmd/*.go | head -n 40
+
+# RS rebuild（decode/encode）
+grep -RIn "func (e Erasure) Heal" -n cmd/erasure-decode.go
+
+# 寫回/commit（tmp → 正式）
+grep -RIn "RenameData\(" -n cmd/erasure-healing.go cmd/xl-storage.go cmd/storage-interface.go | head -n 120
+```
+
+你要寫 incident note 的時候，這樣描述最不會被挑戰：
+- `HealObject` 最終會進 `erasureObjects.healObject()`，它會做「讀 metadata → 判斷缺片/版本 → RS rebuild → 對缺的 disks 寫回 → RenameData/commit」。
+- 其中 `RenameData()`（底層會走 rename/fsync 等）常是高 latency 的放大器；在 healing 放大時很容易把整個 node 的 tail latency 拉起來。
+
 一鍵釘死（對你跑的版本）：
 ```bash
 cd /path/to/minio
