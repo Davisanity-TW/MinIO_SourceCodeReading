@@ -1,3 +1,4 @@
+- 2026-04-19 06:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-callchain.md`，補一節 `renameData()` → `StorageAPI.RenameData()` 的 **src/dst 參數語意**（`.minio.sys/tmp` → `<bucket>/<object>`），方便把 PutObject tail latency 對齊到 rename/fsync 類 I/O 熱點。
 - 2026-04-18 22:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-when-heal-bucket.md`，把 HealBucket（bucket heal）如何放大成大量 `HealObject()`、並可能與 grid streaming mux 的 `canceling remote connection` watchdog 共振，整理成可直接 grep/釘死的最短因果鏈。
 - 2026-04-18 14:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-callchain.md`，補上 HealBucket 的 local 落點（`healBucketLocal()`）與 background heal worker 的最短 grep 錨點：把 bucket-level heal → 大量 `HealObject()` 的放大鏈釘死，方便跟 `canceling remote connection` 共振一起排查。
 - 2026-04-18 06:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-callchain.md`，新增「MRF lifecycle / consumer goroutine 啟動點」的最短 grep 錨點（避免只看到 enqueue，卻沒確認 `healRoutine()` 是否已啟動）。

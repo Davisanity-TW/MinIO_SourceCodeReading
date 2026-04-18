@@ -513,6 +513,39 @@ PutObject 與 Healing 最容易共振的點：兩者最後都會落到 storage r
 - `cmd/erasure-object.go: renameData(...)` 會對 `onlineDisks[]` 逐顆呼叫 `disk.RenameData(...)`
 - 換句話說：PutObject 的「tmp → 正式」最後也會落到同一個 storage 介面 `StorageAPI.RenameData()`
 
+### 3.0.1（補）PutObject 的 `renameData()`：`RenameData(src=.minio.sys/tmp, dst=<bucket>/<object>)` 的參數語意
+
+> 目的：在看 iostat/latency 時，能把「是哪一段 Rename」對回 code 的 **src/dst 路徑**。
+>
+> PutObject 這段 rename 主要是在把 tmp object（`.minio.sys/tmp`）底下的 shards 與 `xl.meta` **原子切換**到正式 bucket/object 路徑。
+
+典型 pattern（不同版本變動多在參數/回傳值，核心語意大致一致）：
+
+- src：`minioMetaTmpBucket`（`.minio.sys/tmp`）
+  - `srcEntry` 常見是 `tmpID` 或 `pathJoin(tmpID, <dataDir>)`
+- dst：真正的 `bucket` / `object`
+  - `dstEntry` 常見是 `object`（內含 `<dataDir>/part.N` 或由 storage layer 依 `FileInfo` 組出）
+- metadata：`FileInfo`（包含 `DataDir` / `Erasure.Index` / parts / checksums）
+
+你要在 source tree 釘死這段（最短 grep）：
+```bash
+cd /path/to/minio
+
+# renameData() 本體
+grep -n "^func renameData" cmd/erasure-object.go
+
+# renameData() 內部逐 disk 的 RenameData 參數（看 src/dst bucket/entry）
+grep -n "\.RenameData(ctx" cmd/erasure-object.go | head -n 80
+
+# RenameData 的介面與實作（最後會走到檔案系統 rename/fsync）
+grep -n "RenameData(ctx" cmd/storage-interface.go
+grep -n "func (s \\*xlStorage) RenameData" cmd/xl-storage.go
+```
+
+實務判讀：
+- 如果 PutObject tail latency 的 spike 同時伴隨 `.minio.sys/tmp` 寫入量大，常見是卡在 **tmp → 正式** 的 rename/commit（metadata-heavy）。
+- 與 Healing 的差異：healing 的 commit 通常直接在 `erasure-healing.go` 逐 disk 呼叫 `RenameData()`（同一個 storage 層 commit 點，但呼叫者不同）。
+
 #### （補）`renameData()` / `commitRenameDataDir()` 的「精準函式錨點」
 如果你在不同 RELEASE tag 間跳轉，最常卡住的是「rename/commit 的 receiver/檔案名有沒有變」。建議在筆記裡固定記兩個 signature（用來 grep）：
 - `cmd/erasure-object.go`：`func renameData(`（回傳值/參數可能改動，但函式名很穩）
