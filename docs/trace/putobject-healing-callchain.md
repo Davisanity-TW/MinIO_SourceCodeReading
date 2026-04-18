@@ -247,6 +247,85 @@ grep -RIn "HealObject\(" -n cmd/admin-handlers.go | head -n 80
 
 ---
 
+
+
+## 2.2.3（補）HealBucket 的 local 落點：`healBucketLocal()` → `HealObject()`（為什麼 bucket-level heal 會放大成大量 object heal）
+
+> 目的：現場常會看到 `mc admin heal -r <bucket>` 或 background heal worker 在跑 **bucket heal**，但你真正要回答的是：
+> - bucket heal 最終怎麼變成一個個 `HealObject()`？
+> - 它是從哪個 worker/queue 跑出來的？
+> - 這些 object heal 很可能透過 peer REST/grid RPC 打到同一批節點，進而跟 `canceling remote connection` 共振。
+
+### A) bucket-level handler（admin/peer）到 local heal 的橋接
+
+- `cmd/peer-rest-server.go`
+  - `func (s *peerRESTServer) HealBucketHandler(...)`
+    - 常見會呼叫：`healBucketLocal(ctx, bucket, opts)`
+
+- `cmd/admin-handlers.go`
+  - `func (a adminAPIHandlers) HealHandler(...)`
+    - 解析 heal request 後，可能落到 bucket/prefix heal（不同版本路徑略有差）
+
+一鍵釘死：
+```bash
+cd /path/to/minio
+
+# local bucket heal 的真正落點
+grep -RIn "func healBucketLocal" -n cmd | head -n 50
+
+# peer handler → healBucketLocal
+grep -RIn "HealBucketHandler" -n cmd/peer-rest-server.go | head -n 80
+grep -RIn "healBucketLocal\(" -n cmd/peer-rest-server.go cmd/*.go | head -n 80
+
+# admin handler（若要對齊 admin heal）
+grep -RIn "func \(a adminAPIHandlers\) HealHandler" -n cmd/admin-handlers.go
+```
+
+### B) `healBucketLocal()` 內部：列舉 objects → 逐一呼叫 `HealObject()`（觀測/瓶頸在哪）
+
+> 你要的重點通常不是「bucket heal 能不能跑完」，而是：它在列舉時吃掉多少 metadata I/O，並且在 heal phase 造成多少 `HealObject` RPC/本地 I/O。
+
+因版本不同，bucket heal 可能會透過：
+- metacache / scanner 結果
+- 或直接 list bucket/prefix
+
+但幾乎都會出現這類模式：
+- `for item in <object list>` → `o.HealObject(ctx, bucket, object, versionID, healOpts)`
+
+一鍵釘死（先從 call site 反推）：
+```bash
+cd /path/to/minio
+
+# 找出 healBucketLocal 的定義與所在檔案
+grep -RIn "func healBucketLocal" -n cmd | head -n 80
+
+# 再從 healBucketLocal 所在檔案/同檔追 HealObject 呼叫（用檔名縮小範圍會更準）
+grep -RIn "HealObject\(" -n cmd | grep -E "healBucketLocal|HealBucket" || true
+```
+
+### C) background heal worker（自動/排程）是怎麼觸發 bucket heal 的？
+
+> 目的：把「背景任務」釘到實際 worker/queue，方便跟 CPU/I/O/`canceling remote connection` 的時間窗做關聯。
+
+常見線索：
+- `cmd/background-heal-ops.go`：背景 heal task/worker 的 switch（HealFormat/HealBucket/HealObject）
+- `cmd/global-heal.go`：`healErasureSet()` / bucket heal 的排程與 fan-out
+
+一鍵 grep：
+```bash
+cd /path/to/minio
+
+ls cmd/background-heal-ops.go cmd/global-heal.go 2>/dev/null
+
+# worker switch：task 類型（bucket/object）
+grep -RIn "type healTask|case .*HealBucket|case .*HealObject" -n cmd/background-heal-ops.go cmd/*.go | head -n 120
+
+# 排程點（不同版本可能叫 healErasureSet / initBackgroundHealing）
+grep -RIn "healErasureSet\(|initBackgroundHealing|initAutoHeal" -n cmd/global-heal.go cmd/*.go | head -n 120
+```
+
+> 實務判讀：如果你在同一時間窗看到大量 bucket/object heal（MRF + scanner + admin/background 混在一起），peer REST/grid streaming mux 的長連線數量會上升，`canceling remote connection` 很容易成為「結果」而被放大。
+
 ## 2.3 HealObject() 的「落地」：ObjectLayer.HealObject → erasureObjects.healObject → RS rebuild + RenameData
 
 > 目的：把 `HealObject(...)` 這個「看起來很高階」的 API，一路釘到真正吃 I/O 的地方（RS rebuild、寫回、rename/fsync）。
