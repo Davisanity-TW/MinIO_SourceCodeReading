@@ -503,6 +503,22 @@ PutObject 與 Healing 最容易共振的點：兩者最後都會落到 storage r
 - 常見實作：`cmd/xl-storage.go`
   - `func (s *xlStorage) RenameData(ctx context.Context, srcBucket, srcEntry string, fi FileInfo, dstBucket, dstEntry string, opts RenameOptions) error`
 
+### 3.1（新增）RenameData 在 OS/FS 層通常會做哪些 syscall？（為什麼它會放大 tail latency）
+
+> 目的：當你在現場看到 healing / PutObject 最後一段卡住、`iostat await` 飆高、甚至開始共振出 `canceling remote connection`，很多時候不是 RS 計算本身，而是 **rename/fsync/metadata ops** 被檔案系統或磁碟 latency 放大。
+
+在大多數 Linux + ext4/xfs 的情境下，`(*xlStorage).RenameData()` 這段常會觸發（實作細節依版本而異，但概念穩定）：
+- `mkdir` / `mkdirat`：建立目標 dataDir（或其上層目錄）
+- `renameat` / `renameat2`：把 tmp 的 `part.N` 原子搬到正式路徑
+- `fsync` / `fdatasync`：確保資料與 metadata 落盤（版本不同，可能對檔案或目錄做）
+- 例外：若 src/dst 不在同一個 filesystem/device（理論上 MinIO 會盡量避免），rename 可能退化成 **copy + fsync + unlink**，I/O 會被放大
+
+你要把「卡在 RenameData」釘到 syscall 層時，最省事的做法通常是：
+- 用 `pprof` / goroutine dump 先確認堆疊停在 `xlStorage.RenameData`
+- 再用 `strace -fp <minio-pid> -e trace=rename,renameat,renameat2,fsync,fdatasync,mkdir,mkdirat,unlink,openat` 在短時間窗內觀察 syscall latency
+
+> 實務提醒：如果你看到 `RenameData` 的 syscall latency 跟 `iostat` 的 `await/%util` 同時間尖峰，`canceling remote connection` 通常更像是「對端忙到 ping handler 排不到」的結果，而不是網路先壞。
+
 ### 3.0（補）把 PutObject 的 `renameData()` 也釘到「每顆 disk 的 RenameData」呼叫點
 
 > 目的：很多讀碼筆記只記到「PutObject 會 renameData → commitRenameDataDir」，但你在現場要判斷 I/O 壓力時，更需要知道：
