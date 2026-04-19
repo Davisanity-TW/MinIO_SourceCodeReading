@@ -37,6 +37,20 @@ iostat -x 1 3
 ```
 - `await` 高、`%util` 高：偏 **I/O 壓力**（常見共振：healing/scanner/MRF/rebalance）
 
+### 1.2.1（新增）如果同一組 `A->B` 幾乎「每分鐘」都被 cancel：優先驗證是不是 ping handler 跑不動（而不是真掉包）
+現場常見誤判是：看到 `not seen for ~60s` 就直覺當成網路問題。但其實 server 端的 LastPing 更新點在：
+- `internal/grid/connection.go`：`case OpPing` → `handlePing(...)`
+- `internal/grid/muxserver.go`：`(*muxServer).ping()` → `atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
+
+如果 remote 節點在同時間窗有：
+- healing/scanner/MRF 大量跑
+- `iostat` await/%util 尖峰
+- 或 CPU throttling / goroutine 爆量
+
+那更可能是 **remote 忙到 ping handler 排不到**（LastPing 沒更新）→ watchdog 觸發 `checkRemoteAlive()`。
+
+最便宜的「快速佐證」：對 remote 節點抓一次 goroutine dump（SIGQUIT），看是否大量卡在 `RenameData()`/`fsync`/`readAllFileInfo()`/`erasure.Heal()` 這類路徑（詳見：`canceling-remote-connection-sigquit-stackdump.md`）。
+
 ### 1.3 任一節點：看 MinIO internal trace 的 grid 熱點（偏「誰把 grid 拖慢」）
 ```bash
 mc admin trace --type internal --json <ALIAS> \
