@@ -1072,3 +1072,58 @@ grep -RIn "clientPingInterval" -n internal/grid | head
 > - healing/scanner/MRF 活躍（trace/metrics/log）
 > - remote disk latency 尖峰（`iostat -x`）
 > 三者對齊，就能快速把因果收斂到「資源/I/O 壓力導致 ping 處理延遲」或「網路丟包」兩條主路徑。
+
+---
+
+## 12)（補）把 PutObject/Healing 的「原子切換」落到 `xlStorage.RenameData()`：為什麼 rename/fsync 會是尾端瓶頸
+
+> 目的：當你已經把上層呼叫鏈釘到 `StorageAPI.RenameData()`，下一步最常問的是：
+> - 這個 rename 到底做了哪些 syscall/metadata ops？
+> - 什麼情況會「看起來像 rename」但實際退化成 copy？
+> - 為什麼會跟 tail latency / grid ping watchdog 共振？
+
+### 12.1 介面/實作錨點（避免版本拆檔）
+- interface：`cmd/storage-interface.go`
+  - `type StorageAPI interface { RenameData(ctx, srcVolume, srcPath string, fi FileInfo, dstVolume, dstPath string, opts RenameOptions) error }`
+- 常見實作（本地檔案系統 XL）：`cmd/xl-storage.go`
+  - `func (s *xlStorage) RenameData(ctx context.Context, srcVolume, srcPath string, fi FileInfo, dstVolume, dstPath string, opts RenameOptions) error`
+
+快速定位（在你跑的版本）：
+```bash
+cd /path/to/minio
+
+grep -RIn "type StorageAPI interface" -n cmd/storage-interface.go
+grep -RIn "RenameData\(" -n cmd/storage-interface.go
+
+grep -RIn "func \(s \*xlStorage\) RenameData" -n cmd/xl-storage.go
+```
+
+### 12.2 直覺語意：`RenameData()` 其實在做「資料 + xl.meta」的 cutover（而且很 metadata-heavy）
+在 PutObject/Healing 兩條線裡，`RenameData()` 都扮演同一個角色：
+- 先把資料寫到 tmp（`.minio.sys/tmp/...`）
+- 最後用 rename/cutover 把 tmp 變成「正式 dataDir」
+
+因此它常會牽涉到大量這類操作（不同版本細節略有差異，但行為類型大致一致）：
+- `mkdir` / `mkdirAll`（建立目的地 dataDir 結構）
+- `rename`（把 `part.N` 從 tmp 切到正式路徑）
+- `write xl.meta`（更新 object metadata；版本化時更複雜）
+- `fsync`（確保 metadata/rename 的 durability；取決於實作與平台）
+
+> 這也是為什麼你在 disk latency 角度看，rename 這段常常比「純吞吐（Encode/Heal）」更像「尾端拖長 + 抖動」的來源：它非常吃 metadata ops、inode/dir lock、以及底層磁碟/檔案系統的同步語意。
+
+### 12.3 什麼情況會「退化」？（為何有時 rename 看起來不像原子）
+原則上，**同一顆 disk / 同一個 filesystem** 上的 `rename(2)` 是原子且便宜的；但只要遇到以下情境，就可能退化成更重的行為（copy + fsync + unlink 類）：
+- tmp 與目的地不在同一個 mount / device（cross-device rename）
+- 底層 storage 把 rename 實作成複合操作（例如特定 backend/特殊模式）
+- filesystem metadata 壓力很高（大量小檔/大量版本/dir entry 爆）
+
+因此在 incident note 你若看到：
+- `.minio.sys/tmp` 寫入很快，但 tail latency 卡在尾端
+- 或 healing RS 重建 CPU 不高，但整體 duration 很長
+就很值得把觀察點往 `xlStorage.RenameData()` 的 syscall/metadata 方向查。
+
+### 12.4（實戰）要把瓶頸釘死到「rename vs fsync vs mkdir」：建議用 block profile / strace 的最小化打法
+- block profile（Go）：看 goroutine 是否大量卡在 `os.Rename` / `fdatasync` / `openat`/`mkdirat`
+- strace（只在可接受的維運窗口）：針對單一 pid/短時間窗取樣，避免造成額外負載
+
+> 你不需要一開始就上這些重工具；但當你已經把 call chain 收斂到 `RenameData()`，這是最快把「可疑 I/O」變成「可證明的 syscall 熱點」的方法。
