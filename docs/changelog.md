@@ -1,3 +1,4 @@
+- 2026-04-21 06:00（Asia/Taipei）：Trace：新增 `docs/trace/putobject-healing-grep-pack.md`（PutObject/Healing/MRF/grid watchdog 的「一鍵 grep 錨點」套件），用函式簽名固定 code anchors、方便 incident note 回溯。
 - 2026-04-20 22:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-symptom-to-cause.md`（從單行 log symptom 快速分流到 I/O/CPU/網路方向 + 最小蒐證清單），並在 `docs/trace/putobject-healing-callchain.md` 補上延伸連結。
 - 2026-04-20 14:00（Asia/Taipei）：Trace：新增 `docs/trace/putobject-healing-function-map.md`（PutObject/Healing 的 phase→函式/檔案對照表 + 最短 grep 錨點），方便 incident 時快速把現象釘到具體 code path。
 - 2026-04-20 06:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-callchain.md`，新增一節「`(*xlStorage).RenameData()` 在 OS/FS 層常見 syscall（rename/fsync/mkdir）與用 strace 快速釘 latency」；用來把 PutObject/Healing 的 tail latency 直接對齊到 rename/fsync 類 metadata-heavy 熱點。
