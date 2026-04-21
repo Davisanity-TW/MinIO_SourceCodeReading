@@ -1,3 +1,4 @@
+- 2026-04-22 06:00（Asia/Taipei）：Trace：新增 `docs/trace/peer-rest-method-anchors.md`（peer REST method 常數 + server handler / client 初始化與 cache 的最短 grep 錨點）；Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-stack-signatures.md`（SIGQUIT/pprof 常見 stack signature：RenameData/fsync/healObject/mrf/grid）。
 - 2026-04-21 14:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-function-map.md`，補上 healing `healObject()` 的 `srcDataDir/dstDataDir/tmpID` 釘死方式（把「讀來源 vs 寫回目標」對到實際路徑，incident note 更好回溯）。
 - 2026-04-21 06:00（Asia/Taipei）：Trace：新增 `docs/trace/putobject-healing-grep-pack.md`（PutObject/Healing/MRF/grid watchdog 的「一鍵 grep 錨點」套件），用函式簽名固定 code anchors、方便 incident note 回溯。
 - 2026-04-20 22:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-symptom-to-cause.md`（從單行 log symptom 快速分流到 I/O/CPU/網路方向 + 最小蒐證清單），並在 `docs/trace/putobject-healing-callchain.md` 補上延伸連結。
