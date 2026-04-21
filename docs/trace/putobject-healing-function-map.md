@@ -142,6 +142,34 @@ grep -RIn "\\.Heal\\(ctx" -n cmd/erasure-healing.go | head
 grep -RIn "RenameData\\(ctx" -n cmd/erasure-healing.go cmd/storage-interface.go cmd/xl-storage.go | head
 ```
 
+### B6. （補）healObject 的 DataDir / tmpID：讀來源 vs 寫回目標怎麼選？（方便把磁碟 I/O 對到實際路徑）
+
+> 現場常見困惑：Healing 明明是在「補洞」，為什麼看起來像是又寫出一份新的 dataDir？
+> 因為 healObject 通常會：
+> - 先決定 **srcDataDir**（讀既有 shards 的來源 dataDir）
+> - 再決定 **dstDataDir**（本次修復要寫回的目標 dataDir；可能沿用 src，也可能是新 dataDir）
+> - 用 **tmpID** 在 `.minio.sys/tmp` 建暫存目錄，把重建 shards 先寫進去
+> - 最後用 `disk.RenameData()` 把 tmp 原子切回正式路徑
+
+你要在不同版本快速釘死這三個變數最有效的方式：直接在 `cmd/erasure-healing.go` 內抓關鍵字（而不是靠行號）：
+
+```bash
+cd /path/to/minio
+
+# 先釘 healObject() 本體
+grep -RIn "^func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
+
+# 釘 dataDir / tmpID 的決策與寫回點（關鍵字可能略有差，但通常會同時出現 src/dst/tmp）
+grep -n "srcDataDir" cmd/erasure-healing.go | head -n 40
+grep -n "dstDataDir" cmd/erasure-healing.go | head -n 40
+grep -n "tmpID" cmd/erasure-healing.go | head -n 40
+
+# 寫回 commit（把 tmpID/dstDataDir 轉正）
+grep -n "RenameData(ctx" cmd/erasure-healing.go | head -n 40
+```
+
+> 實務用法：你在 incident note 想把「healing 期間的磁碟寫入」跟「到底寫到哪個 dataDir」對起來時，記下 `srcDataDir/dstDataDir/tmpID` 會比只記 `HealObject` 更容易回溯。
+
 ---
 
 ## C) 共同落盤切點：StorageAPI.RenameData（rename/fsync 類 metadata-heavy 放大器）
