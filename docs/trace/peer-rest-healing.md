@@ -60,7 +60,25 @@ grep -RIn "peer rest" -n cmd | head -n 50
 - scanner / metacache
 - admin / drive status
 
-建議直接用關鍵字掃：
+### 3.1 先從「方法常數」下手：`peerRESTMethod*`
+
+很多版本會把 peer REST 的端點/方法集中定義成常數（例如 `peerRESTMethod...`）。這個比直接猜 handler 名稱更穩。
+
+```bash
+cd /path/to/minio
+
+# 列出所有 peer REST 方法常數（先看有哪些名字）
+grep -RIn "peerRESTMethod" -n cmd/peer-rest-*.go | head -n 200
+
+# 只看跟 heal/scanner/metacache 相關的 methods
+grep -RIn "peerRESTMethod" -n cmd/peer-rest-*.go | grep -Ei "heal|healing|scan|scanner|metacache|rebalance" | head -n 200
+```
+
+你拿到 method 名稱後，再回頭追：
+- server 端：method 對應哪個 handler（收到後做什麼）
+- client 端：哪些 goroutine/背景流程在呼叫這個 method（頻率/重試/backoff）
+
+### 3.2 直接掃「語意關鍵字」：Heal / BackgroundHeal / scanner
 
 ```bash
 cd /path/to/minio
@@ -71,6 +89,19 @@ grep -RIn "Heal" -n cmd/peer-rest-server.go cmd/peer-rest-client.go | head -n 20
 grep -RIn "BackgroundHeal" -n cmd/peer-rest-server.go cmd/peer-rest-client.go | head -n 200
 
 grep -RIn "scanner" -n cmd/peer-rest-server.go cmd/peer-rest-client.go | head -n 200
+```
+
+### 3.3 把 client 呼叫點釘到「是誰在打」：看 `newPeerRESTClient` / `globalPeerClients`
+
+> 你要能在 incident note 寫出：到底是 **MRF**、**scanner**、**rebalance**、還是 **admin heal** 在打 peer REST。
+
+```bash
+cd /path/to/minio
+
+# 找 peer REST client 的建構/取得點（不同版本命名會變，但通常有 global client cache）
+grep -RIn "newPeerRESTClient" -n cmd | head -n 80
+
+grep -RIn "globalPeer" -n cmd | grep -Ei "peer.*client" | head -n 120
 ```
 
 你在 incident note 最想釘死的，是這兩件事：

@@ -270,3 +270,4 @@
 - 2026-04-16 06:00（Asia/Taipei）：Trace/Healing：補上 auto drive healing（monitorLocalDisksAndHeal → healFreshDisk）落地行為說明與最短 grep 錨點，方便釘死「新盤/回復事件」到底呼叫 HealFormat/HealBucket/HealObject 哪條線。
 
 - 2026-04-16 22:00（Asia/Taipei）：Trace：PutObject/Healing 針對 PutObject/Healing 共振時的 grid `canceling remote connection` 補上現場「共振證據鏈」排查頁（新頁：canceling-remote-connection-with-putobject-healing.md）。
+- 2026-04-21 22:00（Asia/Taipei）：Trace：peer REST（grid RPC）補上 `peerRESTMethod*` 方法常數與 client 建構/全域 cache 的 grep 錨點；Troubleshooting：新增 `canceling remote connection` 的 stack dump/pprof signatures 速查頁（RenameData/fsync/healObject/mrf/grid）。
