@@ -1,3 +1,4 @@
+- 2026-04-23 06:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-pprof-goroutine-playbook.md`（`canceling remote connection` 時用 goroutine dump/pprof 快速證明「對端忙（I/O/鎖/GC）」而非純網路的最小 playbook）。
 - 2026-04-22 06:00（Asia/Taipei）：Trace：新增 `docs/trace/peer-rest-method-anchors.md`（peer REST method 常數 + server handler / client 初始化與 cache 的最短 grep 錨點）；Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-stack-signatures.md`（SIGQUIT/pprof 常見 stack signature：RenameData/fsync/healObject/mrf/grid）。
 - 2026-04-21 14:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-function-map.md`，補上 healing `healObject()` 的 `srcDataDir/dstDataDir/tmpID` 釘死方式（把「讀來源 vs 寫回目標」對到實際路徑，incident note 更好回溯）。
 - 2026-04-21 06:00（Asia/Taipei）：Trace：新增 `docs/trace/putobject-healing-grep-pack.md`（PutObject/Healing/MRF/grid watchdog 的「一鍵 grep 錨點」套件），用函式簽名固定 code anchors、方便 incident note 回溯。
