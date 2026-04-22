@@ -73,3 +73,25 @@ mc admin trace --type internal --json <ALIAS> \
 - MRF consumer：`cmd/mrf.go` → `healRoutine()`
 - Healing I/O 熱點：`cmd/erasure-healing.go` → `erasure.Heal()` + `disk.RenameData()`
 - watchdog：`internal/grid/muxserver.go` → `checkRemoteAlive()`
+
+### 3.1 你可以直接加在筆記裡的「threshold 說明」（避免每次都重新推算）
+> 多數版本是：`clientPingInterval = 15s`，server 端 `lastPingThreshold = 4 * clientPingInterval ≈ 60s`。
+>
+> 所以看到 `not seen for ~60s`，不等於「網路必定中斷 60s」，也可能是對端忙到 ping handler 排不到（LastPing 沒更新）。
+
+---
+
+## 4) 特殊但很致命：NTP/時鐘跳動造成的誤判（`not seen for` 不再接近 ~60s）
+
+如果你看到 `not seen for` 明顯不是 ~60s（例如突然變成 10m、或跳來跳去），請把 **時鐘跳動** 放進優先序：
+
+- `checkRemoteAlive()` 判斷用的是：`time.Since(time.Unix(LastPing, 0))`
+- 若系統時間被 step/backward/forward（chrony/ntpd），這個差值可能被放大或縮小，導致 watchdog **提早或延後** 觸發
+
+建議在 incident note 補兩行（兩端都抓）：
+```bash
+chronyc tracking || true
+journalctl -u chronyd --since "-2h" | tail -n 200
+```
+
+> 實務上：如果同一時間窗也有磁碟/CPU 壓力，NTP jump 會把「資源壓力造成的 ping 延遲」放大成更難判讀的告警噪音；把 NTP 狀態記下來會大幅提升事後可回溯性。
