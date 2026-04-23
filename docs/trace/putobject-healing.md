@@ -972,6 +972,17 @@ grep -RIn "TraceHealing" -n . | head -n 50
 4) **grid streaming mux 心跳（ping）因資源壓力延遲 → 觸發 watchdog**
 - `minio/internal/grid/muxserver.go`：`(*muxServer).checkRemoteAlive()` 判定 `LastPing` 超過 threshold → 印 `canceling remote connection ... not seen for ...` → `m.close()`
 
+建議你在「線上跑的那個版本」直接用 signature grep 把 log 錨點釘死（避免行號漂移）：
+```bash
+cd /path/to/minio
+
+grep -RIn "canceling remote connection" -n internal/grid | head
+
+grep -RIn "checkRemoteAlive\(" -n internal/grid/muxserver.go | head -n 80
+
+grep -RIn "LastPing" -n internal/grid/muxserver.go | head -n 80
+```
+
 > 延伸閱讀（同 repo）：`docs/troubleshooting/canceling-remote-connection.md`
 
 ---
