@@ -131,18 +131,58 @@ grep -n "^func healObject" cmd/global-heal.go
 
 ---
 
-## 4) Healing：真正做 RS rebuild + `RenameData()` 的入口
+## 4) Healing：真正做 RS rebuild + `RenameData()` 的入口（I/O heavy path）
 
 > 這一段是你要對齊 I/O（讀 `xl.meta` / 重建 / rename/fsync）時最常下手的地方。
 
 - 檔案：`cmd/erasure-healing.go`
-- 函式：`(er *erasureObjects) healObject(...)`
+- 入口函式：`(er *erasureObjects) healObject(...)`
 
 ```bash
 cd /home/ubuntu/clawd/minio
 
 grep -n "func (er \\*erasureObjects) healObject" cmd/erasure-healing.go | head
+# 242:func (er *erasureObjects) healObject(ctx context.Context, bucket string, object string, versionID string, opts madmin.HealOpts) (result madmin.HealResultItem, err error) {
 ```
+
+### 4.1 metadata fan-out（讀 `xl.meta`）的 anchor：`readAllFileInfo(...)`
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -n "readAllFileInfo" cmd/erasure-healing.go | head -n 20
+# 279:    partsMetadata, errs := readAllFileInfo(ctx, storageDisks, "", bucket, object, versionID, true, true)
+# 1027:   _, errs := readAllFileInfo(healCtx, storageDisks, "", bucket, object, versionID, false, false)
+```
+
+### 4.2 RS rebuild 的 anchor：`Erasure.Heal(...)`
+
+- 檔案：`cmd/erasure-decode.go`
+- 函式：`func (e Erasure) Heal(...)`
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -n "func (e Erasure) Heal" cmd/erasure-decode.go
+# 314:func (e Erasure) Heal(ctx context.Context, writers []io.Writer, readers []io.ReaderAt, totalLength int64, prefer []bool) (derr error) {
+```
+
+### 4.3 最後落地（tmp → 正式）的 storage commit anchor：`xlStorage.RenameData(...)`
+
+- 介面：`cmd/storage-interface.go`（`StorageAPI.RenameData`）
+- 實作：`cmd/xl-storage.go`（`(*xlStorage).RenameData`）
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -n "RenameData(ctx" cmd/storage-interface.go | head -n 5
+# 88:    RenameData(ctx context.Context, srcVolume, srcPath string, fi FileInfo, dstVolume, dstPath string, opts RenameOptions) (RenameDataResp, error)
+
+grep -n "func (s \\*xlStorage) RenameData" cmd/xl-storage.go | head
+# 2456:func (s *xlStorage) RenameData(ctx context.Context, srcVolume, srcPath string, fi FileInfo, dstVolume, dstPath string, opts RenameOptions) (res RenameDataResp, err error) {
+```
+
+> 實務判讀（寫 incident note 用一句就夠）：當 healing 很熱時，重點通常不是 RS 計算，而是 `readAllFileInfo()`（metadata fan-out）與 `RenameData()`（rename/fsync/metadata ops）這兩段把 tail latency 拉高；grid ping handler 也可能因此排隊，放大成 `canceling remote connection`。
 
 ---
 
