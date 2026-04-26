@@ -91,6 +91,26 @@ grep -n "globalMRFState.addPartialOp" cmd/erasure-object.go | head -n 20
 
 ## 3) MRF：queue consumer（背景補洞調度者）
 
+### 3.0 MRF consumer 的啟動點（非常重要：避免只看到 enqueue 但 consumer 根本沒起）
+
+- 檔案：`cmd/erasure-server-pool.go`
+- 啟動：`go globalMRFState.healRoutine(z)`
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -n "go globalMRFState\.healRoutine" cmd/erasure-server-pool.go
+# 193:\t\tgo globalMRFState.healRoutine(z)
+```
+
+（附近上下文：啟動點就在 object layer bootstrap 階段，跟 `initAutoHeal()` 靠很近）
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+sed -n '170,210p' cmd/erasure-server-pool.go
+```
+
 ### 3.1 MRF state + non-blocking enqueue（queue 滿會 drop）
 
 - 檔案：`cmd/mrf.go`
@@ -127,6 +147,29 @@ cd /home/ubuntu/clawd/minio
 
 grep -n "^func healObject" cmd/global-heal.go
 # 541:func healObject(bucket, object, versionID string, scan madmin.HealScanMode) error {
+```
+
+---
+
+### 3.4 背景 healing workers 的啟動點（MRF/Scanner 丟進去的 task 會在這邊被消費）
+
+> 你在讀碼時常會卡在：MRF 明明 enqueue 了，但到底是哪個 goroutine/worker 真的在跑 `HealObject()`？
+> 
+> 在這個 commit，背景 healing 的啟動鏈最常是：
+> - `cmd/erasure-server-pool.go`：bootstrap 時呼叫 `initAutoHeal(GlobalContext, z)`
+> - `cmd/background-newdisks-heal-ops.go`：`initAutoHeal()` 內呼叫 `initBackgroundHealing(ctx, objAPI)`（啟動 quick background healing）
+
+```bash
+cd /home/ubuntu/clawd/minio
+
+# initAutoHeal 呼叫點（bootstrap）
+grep -n "initAutoHeal" cmd/erasure-server-pool.go | head
+
+# initAutoHeal 定義 + 內部呼叫 initBackgroundHealing
+grep -n "func initAutoHeal" cmd/background-newdisks-heal-ops.go
+# 347:func initAutoHeal(ctx context.Context, objAPI ObjectLayer) {
+
+grep -n "initBackgroundHealing" cmd/background-newdisks-heal-ops.go | head
 ```
 
 ---
