@@ -37,7 +37,21 @@ WARNING: canceling remote connection 10.0.0.10:9000->10.0.0.11:9000 not seen for
 
 對照的「最短因果鏈」請見：
 - `docs/trace/putobject-healing.md`（PutObject 留 partial → MRF → HealObject）
+- `docs/trace/putobject-healing-callchain.md`（把 PutObject / Healing 補到實際檔案/函式/最短 grep 錨點）
 - `docs/trace/grid-canceling-remote-connection.md`（mux watchdog 判定 `LastPing` 超時）
+
+（現場建議的「最短釘點」：先把 PutObject 與 Healing 的入口函式都 grep 出來，避免你在不同 tag/patch 間追錯檔案）
+```bash
+cd /path/to/minio
+
+# PutObject（HTTP handler → erasure putObject）
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
+
+# HealObject（MRF/scanner/admin → erasure healObject）
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd | head
+```
 
 ### 2.2 同時看到大量 TCP 重傳/RTO（更像網路/CNI/MTU/conntrack）
 
