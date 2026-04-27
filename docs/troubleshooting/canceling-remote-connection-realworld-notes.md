@@ -66,6 +66,26 @@ ss -tiH '( sport = :9000 or dport = :9000 )' | head -n 120
 - conntrack 表爆掉或 timeout 太短
 - 中間設備/LB idle timeout
 
+### 2.3（補）先把 `local->remote` 對到「是哪兩台 node」+「那條 connection 可能承載哪種背景流量」
+
+很多人看到 `10.0.0.10:9000->10.0.0.11:9000` 的第一反應是「網路掉了」；但在 MinIO distributed 下，這條 grid connection 常常同時承載 peer REST RPC（healing/scanner/status/rebalance 類），所以你要先做兩件事：
+
+1) **把 IP/Port 對回 node identity**（避免追錯機器）
+- 在該 cluster alias 上：
+  - `mc admin info <ALIAS>`（看 endpoint ↔ nodeName）
+  - `mc admin config get <ALIAS> subnet`（若你有做 subnet/mesh，確認 endpoint 來源）
+
+2) **確認同時間窗是不是有大量 internal/healing 類 RPC**（判斷是不是背景流量把 grid mux 壓力拉高）
+- 最快的「方向性」證據（不是根因證明）：
+```bash
+mc admin trace --type internal --json <ALIAS> \
+  | jq -r 'select(.funcName|test("grid\\.|peerREST|HealObject|RenameData"))
+           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv' \
+  | head -n 200
+```
+
+> 實務用法：如果 trace 顯示同時間窗 peerREST/healing 類事件量爆量，而 `ss -ti` 沒看到明顯 retrans/RTO，那你更應該先把重心放在「資源壓力（I/O/CPU/GC）→ ping handler 延遲」這條線。反之，如果 internal trace 沒什麼背景事件，但 TCP retrans/RTO 明顯，就優先轉向網路/CNI/MTU/conntrack。
+
 ---
 
 ## 3) 一次值班「最小蒐證包」（30 分鐘內可以拿到的證據）
