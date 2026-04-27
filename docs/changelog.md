@@ -286,3 +286,5 @@
 - 2026-04-21 22:00（Asia/Taipei）：Trace：peer REST（grid RPC）補上 `peerRESTMethod*` 方法常數與 client 建構/全域 cache 的 grep 錨點；Troubleshooting：新增 `canceling remote connection` 的 stack dump/pprof signatures 速查頁（RenameData/fsync/healObject/mrf/grid）。
 
 - 2026-04-26 14:00（Asia/Taipei）：Troubleshooting：新增 real-world 筆記頁 `canceling remote connection`（最小蒐證包 + code anchors + 網路 vs I/O 快速分類）。
+
+- 2026-04-28 06:00 補齊 PutObject/Healing：新增 HealObject→healObject→rebuild/寫回 的呼叫錨點；新增 `canceling remote connection` 最短 callchain/快速判斷頁

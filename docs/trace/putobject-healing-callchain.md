@@ -730,3 +730,96 @@ grep -RIn "LastPing" -n internal/grid/muxserver.go | head
 ```
 
 > 實務判讀：當同一時間窗 healing/MRF 很忙、或磁碟 latency 飆高時，grid 的 ping handler 也可能因排程/I/O 阻塞而延遲，最後表現成這條 log。
+---
+
+## 2.4（補齊）HealObject() → healObject() → 修補寫回：常用的「真正動到 disk」呼叫錨點
+
+> 你在 incident 現場最常需要的不是「HealObject 這個 API 名字」，而是：
+> - Heal 會不會真的做 RS rebuild？
+> - 最後到底有沒有把資料 **寫回缺片 disk**？
+> - 卡住時卡在哪一層（grid RPC / object layer / erasure layer / rename commit）？
+>
+> 這節把常用的「可跨版本存活」錨點集中在一起，避免你每次都從 `HealObject` 一路翻到最底。
+
+### 2.4.0 先釘「入口」：ObjectLayer.HealObject 的實作落在哪個 receiver
+
+常見（multi-pool + sets + erasureObjects）的入口會長得像：
+- `cmd/erasure-server-pool.go`：`(z *erasureServerPools) HealObject(...)`
+- `cmd/erasure-server-pool.go`：`(p *erasureServerPool) HealObject(...)`
+- `cmd/erasure-sets.go`：`(s *erasureSets) HealObject(...)`
+- `cmd/erasure-healing.go`（或依版本拆分）：`(er erasureObjects) HealObject(...)` / `healObject(...)`
+
+快速對齊（在你跑的版本）：
+```bash
+cd /path/to/minio
+
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head -n 20
+grep -RIn "func (p \\*erasureServerPool) HealObject" -n cmd | head -n 20
+grep -RIn "func (s \\*erasureSets) HealObject" -n cmd | head -n 20
+
+grep -RIn "func (er erasureObjects) HealObject" -n cmd | head -n 20
+grep -RIn "func (er erasureObjects) healObject" -n cmd | head -n 20
+
+### 2.4.1 釘「真正 rebuild」：RS decode/reconstruct 相關字串 + function 名
+
+不同版本 RS 實作會略有差，但通常你可以用以下關鍵字快速定位到：
+- 需要讀 quorum / missing parts 的地方
+- 呼叫 Reed-Solomon 重建的地方
+
+建議先用「語意關鍵字」抓住主要函式，再往上追 caller：
+```bash
+cd /path/to/minio
+
+# 常見：heal / reconstruct / read quorum / missing parts
+grep -RIn "healObject" -n cmd | head -n 120
+grep -RIn "reconstruct" -n cmd | head -n 120
+grep -RIn "missing" -n cmd/erasure-* | head -n 120
+
+# RS：依版本可能在 internal/ 或 cmd/ 下
+grep -RIn "reedsolomon" -n . | head -n 120
+grep -RIn "New.*Reed" -n . | head -n 120
+```
+
+> 實務 tip：
+> - 如果你在 stackdump/pprof 看到大量 goroutine 卡在 `grid` / `xnet` / `quic` 之類，通常還沒到 RS rebuild。
+> - 如果已經進到 `erasureObjects.healObject`（或等價函式）且 CPU/IO 飆高，才比較像在 rebuild。
+
+### 2.4.2 釘「寫回缺片 disk」：bitrot writer / writeAll / rename commit 的錨點
+
+Healing 的最後一哩路，通常會出現這幾種「非常好釘」的動作：
+- 建立 writer（bitrot / healing writer）
+- 把缺片 part 寫到 `.minio.sys/tmp/...` 或直接寫到 dataDir
+- 透過 rename/commit 把 tmp 轉正
+
+你可以先用這些錨點：
+```bash
+cd /path/to/minio
+
+# 1) writer 建立點（與 PutObject 類似的 bitrot writer）
+grep -RIn "newBitrotWriter" -n cmd | head -n 120
+
+# 2) Healing 端常見會出現的 rename/commit（名稱跨版本最穩）
+grep -RIn "renameData" -n cmd | head -n 120
+grep -RIn "commitRenameDataDir" -n cmd | head -n 120
+
+# 3) 如果版本有分 heal rename helper
+grep -RIn "heal.*rename" -n cmd | head -n 120
+```
+
+### 2.4.3 常見卡點分類（用 stackdump / pprof 快速判斷你卡在哪一層）
+
+- **卡在 grid peer RPC（還沒進 object layer）**：
+  - stack 會出現 `internal/grid` / `gridConn` / `(*Connection).RoundTrip` / `context deadline` 等
+  - 通常對應：網路抖動、peer 過載、remote goroutine 全被 I/O/GC 卡住
+
+- **卡在 ObjectLayer（進了 HealObject 但還沒到 erasure）**：
+  - 會看到 `erasureServerPools.HealObject` / `erasureSets.HealObject`
+  - 常見：鎖（namespace lock）、版本/metadata 掃描、要先列出 parts/disks 狀態
+
+- **卡在 erasure heal/rebuild（真正重建）**：
+  - 會看到 `erasureObjects.healObject`（或等價）以及 RS / decode / readQuorum 相關函式
+  - 常見：磁碟讀慢、單 disk 壞道、IOPS 打滿
+
+- **卡在 rename/commit（最後落地/切換）**：
+  - stack 會出現 `renameData` / `commitRenameDataDir`
+  - 常見：fsync/rename 慢、同目錄大量小檔、底層 FS/raid cache 問題
