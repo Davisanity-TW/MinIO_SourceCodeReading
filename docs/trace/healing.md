@@ -115,6 +115,35 @@ grep -RIn "healing\.bin|healingTracker|BackgroundHeal" -n cmd/background-*-heal-
 ### 1.3 `initBackgroundHealing()`：背景 healer worker（不是新盤）
 除了「新盤/回復」驅動的 healing 之外，MinIO 還會在啟動後啟動一組 **background healer**，用來處理各種 healing task（bucket/object/format）。
 
+#### 1.3.0（補）Object healing 的三個入口來源：MRF / scanner / admin
+你在 log 看到的 object healing（`HealObject`）通常來自三條入口之一；把入口釘死，才不會只看到 `healObject()` 卻不知道「誰在觸發」。
+
+1) **MRF（PutObject 留 partial）**
+- enqueue：`cmd/erasure-object.go`：`erasureObjects.addPartial()` → `globalMRFState.addPartialOp(...)`
+- consumer：`cmd/mrf.go`：`func (m *mrfState) healRoutine(z *erasureServerPools)` → helper `healObject(...)` → `z.HealObject(...)`
+
+2) **scanner（背景掃描發現不一致）**
+- `cmd/data-scanner.go`：`func (i *scannerItem) applyHealing(...)` → `o.HealObject(...)`
+
+3) **admin heal（手動/工具）**
+- `cmd/admin-handlers.go`：`adminAPIHandlers.HealHandler(...)` → `objAPI.HealObject(...)`（或 HealBucket/HealFormat）
+
+在你對照的 MinIO source tree 直接用 grep 釘死（不靠行號）：
+```bash
+cd /path/to/minio
+
+grep -RIn "func (er erasureObjects) addPartial" -n cmd/erasure-object.go
+grep -RIn "func (m \*mrfState) healRoutine" -n cmd/mrf.go
+
+grep -RIn "func (i \*scannerItem) applyHealing" -n cmd/data-scanner.go
+
+grep -RIn "func (a adminAPIHandlers) HealHandler" -n cmd/admin-handlers.go
+
+grep -RIn "func (z \*erasureServerPools) HealObject" -n cmd/erasure-server-pool.go
+grep -RIn "func (s \*erasureSets) HealObject" -n cmd/erasure-sets.go
+grep -RIn "func (er \*erasureObjects) healObject" -n cmd/erasure-healing.go
+```
+
 - 檔案：`cmd/background-heal-ops.go`
 - 入口：`func initBackgroundHealing(ctx context.Context, objAPI ObjectLayer)`
   - 建 `bgSeq := newBgHealSequence()`
