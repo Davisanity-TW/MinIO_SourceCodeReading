@@ -66,6 +66,28 @@
 - healing：`(*erasureObjects).healObject()` → `readAllFileInfo()` → `Erasure.Heal()` → `StorageAPI.RenameData()`
 - putobject：`putObject()` → `renameData()` / `commitRenameDataDir()`
 
+#### A.1 典型「拖到 watchdog」的機制：RenameData 的 metadata/fsync 延遲
+很多現場其實不是 RS rebuild 太慢，而是最後的 **rename + fsync + metadata ops** 被檔案系統/磁碟 tail latency 放大，導致：
+- 某些 peer REST/grid streaming mux 的 goroutine 長時間卡住
+- ping/pong handler 排不到 → `LastPing/LastPong` 沒更新 → 觸發 `canceling remote connection`
+
+你要快速判斷是不是卡在 rename/fsync 類操作，最省事的兩步：
+1) 先用 stackdump/pprof 確認 goroutine 停在 `xlStorage.RenameData`/`renameData`/`commitRenameDataDir`
+2) 再用短時間窗 `strace` 觀察 syscall latency（只抓 rename/fsync 相關）
+
+```bash
+# 只示意：請在你要觀察的 node 上執行
+# 先找到 minio pid
+pidof minio
+
+# 觀察 10~30 秒 rename/fsync/unlink 的延遲（不要長時間跑）
+sudo strace -fp <PID> -tt -T -e trace=rename,renameat,renameat2,fsync,fdatasync,mkdir,mkdirat,unlink,openat 2>&1 | head -n 200
+```
+
+判讀要點：
+- 如果你看到 `renameat2/fsync` 單次耗時（`<...>`）明顯飆到數百 ms～秒級，且同時間 `iostat await/%util` 也上去，優先往底層 disk/FS 查。
+- 這種情境下，網路通常只是「表現形式」（connection watchdog 觸發），不是最先壞的那個環節。
+
 ### Bucket B：CPU / goroutine 飽和（handler 排隊）
 典型徵兆：
 - `GOMAXPROCS` 太小（容器配額）或 throttling
