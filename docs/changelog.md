@@ -1,3 +1,4 @@
+- 2026-04-29 14:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-decision-tree.md`，把 `canceling remote connection` 從單行 log 快速分流成「網路/連線層」vs「peer 過載（healing/MRF/rename/fsync）」的 5 分鐘決策樹，並列出固定蒐證包與事件筆記常用結論句。
 - 2026-04-29 06:00（Asia/Taipei）：Troubleshooting：更新 `docs/troubleshooting/canceling-remote-connection-root-causes.md`，在 Bucket A 補一段把 `RenameData`（rename/fsync/metadata ops）尾端延遲如何放大成 grid watchdog 的機制；並附最小 `strace` 指令釘 rename/fsync syscall latency。
 - 2026-04-28 22:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-log-patterns.md`，把 `canceling remote connection` 常見 log 片段整理成可直接照抄的 grep patterns（先固定 time window/local->remote，再同窗關聯 MRF/heal/scanner/rename）。
 - 2026-04-28 14:00（Asia/Taipei）：Trace：更新 `docs/trace/healing.md`，補上 object healing 三個常見入口（MRF/scanner/admin）與 `HealObject` 分層跳板的最短 grep 錨點（補齊實際函式/檔案/呼叫鏈）。
