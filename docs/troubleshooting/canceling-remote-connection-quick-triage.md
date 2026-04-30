@@ -21,6 +21,24 @@
 
 > 若 `not seen for` 明顯不是 ~60s：優先把 **時鐘/NTP 跳動** 納入排查（`time.Since(time.Unix(LastPing,0))` 會受系統時間回撥/校時影響）。
 
+### 0.1（補）你看到的可能不只一種「斷線訊息」：先分清 client vs server
+
+- **server log** 常見：`canceling remote connection ... not seen for ...`
+  - 代表 server 端 watchdog 覺得 **LastPing** 沒更新（多數版本 ~60s）
+- **client log/stack** 常見：`ErrDisconnected` / `context deadline exceeded` / `peer down`
+  - 代表 client 端較短的容忍（常見 ~30s）先放棄
+
+現場最省時間的作法：同一個時間窗在兩邊各 grep 一次，確認哪邊先發生：
+```bash
+# server 端（印 canceling 的那台）
+grep -R "canceling remote connection" /var/log/minio* 2>/dev/null | tail -n 50
+
+# client 端（發起 peer RPC 的那台；可能先看到 ErrDisconnected）
+grep -R "ErrDisconnected" /var/log/minio* 2>/dev/null | tail -n 50
+```
+
+> 讀碼錨點請看：`docs/troubleshooting/canceling-remote-connection-codepath.md`（LastPing/LastPong/threshold）。
+
 ---
 
 ## 1) 10 分鐘三件套（最省時間、最常有效）

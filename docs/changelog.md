@@ -296,3 +296,4 @@
 - 2026-04-28 06:00 補齊 PutObject/Healing：新增 HealObject→healObject→rebuild/寫回 的呼叫錨點；新增 `canceling remote connection` 最短 callchain/快速判斷頁
 
 - 2026-04-30 14:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 現場最小採證頁（goroutine dump/pprof），用來快速分流「網路抖動」vs「遠端節點被 I/O/排程卡住」。
+- 2026-04-30 22:00（Asia/Taipei）：Trace：修正 `putobject-healing-callchain.md` 的 code fence（避免 markdown 斷裂）；Troubleshooting：在 `canceling-remote-connection-quick-triage.md` 補上 client/server 端斷線訊息（ErrDisconnected vs canceling）的一鍵 grep。

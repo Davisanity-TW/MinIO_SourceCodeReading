@@ -759,6 +759,7 @@ grep -RIn "func (s \\*erasureSets) HealObject" -n cmd | head -n 20
 
 grep -RIn "func (er erasureObjects) HealObject" -n cmd | head -n 20
 grep -RIn "func (er erasureObjects) healObject" -n cmd | head -n 20
+```
 
 ### 2.4.1 釘「真正 rebuild」：RS decode/reconstruct 相關字串 + function 名
 
