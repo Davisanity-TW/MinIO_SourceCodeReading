@@ -300,3 +300,4 @@
 - 2026-04-30 22:00（Asia/Taipei）：Trace：修正 `putobject-healing-callchain.md` 的 code fence（避免 markdown 斷裂）；Troubleshooting：在 `canceling-remote-connection-quick-triage.md` 補上 client/server 端斷線訊息（ErrDisconnected vs canceling）的一鍵 grep。
 
 - 2026-05-01 14:00（Asia/Taipei）：Trace：新增 PutObject Healing「實際呼叫鏈（含檔案/函式）」筆記頁，提供 grep/下斷點定位清單。
+- 2026-05-01 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 的 pprof/strace 快速定位頁（用 goroutine dump 分類卡點，並用 strace 釘 `RenameData` syscall latency）。
