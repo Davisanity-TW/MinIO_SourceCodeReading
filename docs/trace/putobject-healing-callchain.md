@@ -165,6 +165,42 @@ grep -n "len(u\\.versions" cmd/mrf.go
   - `func (m *mrfState) healRoutine(z *erasureServerPools)`
     - 出隊後呼叫 helper `healObject(...)` → 最終會進 `z.HealObject(...)`
 
+#### 2.1.0（補齊實際函式/檔案/呼叫鏈）MRF enqueue → consumer → HealObject 的最短鏈
+
+> 這段是你在 incident 筆記最常需要貼的「硬錨點」：PutObject 留下 partial 之後，MRF **到底怎麼把 bucket/object/versionID** 轉成 `HealObject()` 呼叫。
+
+1) PutObject 留下 partial（producer）
+- `cmd/erasure-object.go`
+  - `func (er erasureObjects) addPartial(bucket, object, versionID string)`
+    - `globalMRFState.addPartialOp(partialOperation{ bucket, object, versionID, ... })`
+
+2) MRF consumer loop（queue → helper）
+- `cmd/mrf.go`
+  - `func (m *mrfState) healRoutine(z *erasureServerPools)`
+    - 典型會看到：`op := <-m.opCh` → `healObject(ctx, z, op.bucket, op.object, op.versionID, scanMode)`
+
+3) helper 組 `madmin.HealOpts` → 呼叫 ObjectLayer
+- `cmd/mrf.go`
+  - `func healObject(ctx context.Context, z *erasureServerPools, bucket, object, versionID string, scanMode madmin.HealScanMode) error`
+    - 典型會做：`healOpts := madmin.HealOpts{ ScanMode: scanMode, ... }`
+    - 然後：`_, err := z.HealObject(ctx, bucket, object, versionID, healOpts)`
+
+把以上三段在你線上跑的版本釘死（不用行號）：
+```bash
+cd /path/to/minio
+
+# 1) producer：PutObject 留 partial
+grep -RIn "func (er erasureObjects) addPartial" -n cmd/erasure-object.go
+grep -RIn "globalMRFState\.addPartialOp" -n cmd/erasure-object.go
+
+# 2) consumer：MRF healRoutine 出隊
+grep -RIn "func (m \\*mrfState) healRoutine" -n cmd/mrf.go
+
+# 3) helper：組 opts → HealObject
+grep -RIn "func healObject\(" -n cmd/mrf.go
+grep -RIn "HealObject\(" -n cmd/mrf.go | head -n 50
+```
+
 ### 2.1.1（補）MRF lifecycle：`healRoutine()` 是什麼時候被啟動的？（避免只看到 enqueue 但 consumer 根本沒起）
 
 > 現場常見誤判：你在 PutObject 端看到 `addPartial()` / `globalMRFState.addPartialOp(...)`，就直覺認為「MRF 一定會開始補洞」；但實務上你要先確認 **MRF 的 consumer goroutine** 在你跑的 mode/版本裡確實有被啟動。
