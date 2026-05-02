@@ -302,3 +302,5 @@
 - 2026-05-01 14:00（Asia/Taipei）：Trace：新增 PutObject Healing「實際呼叫鏈（含檔案/函式）」筆記頁，提供 grep/下斷點定位清單。
 - 2026-05-01 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 的 pprof/strace 快速定位頁（用 goroutine dump 分類卡點，並用 strace 釘 `RenameData` syscall latency）。
 - 2026-05-02 06:00（Asia/Taipei）：Trace：補齊 PutObject/Healing 實際函式/檔案/呼叫鏈錨點（新頁 `docs/trace/putobject-healing-real-functions.md`），集中可跨版本存活的 grep 清單。
+
+- 2026-05-02 14:00（Asia/Taipei）：Trace：在 `putobject-healing-real-functions.md` 補上 healing 跨節點時的 peer REST（grid RPC）實際 handler/檔案/grep 錨點（BackgroundHealStatus / HealBucket / healBucketLocal）。

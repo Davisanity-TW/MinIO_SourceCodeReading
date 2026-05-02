@@ -207,6 +207,37 @@ grep -RIn "func (e Erasure) Heal" -n cmd | head -n 40
 grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/erasure-healing.go | head -n 120
 ```
 
+### B.6（補）Healing 需要跨節點時：Peer REST（grid RPC）的實際 handler / 檔案錨點
+
+> 目的：把「heal/status/調度」這類跨節點 RPC 的 handler 名稱釘死；現場看到 `canceling remote connection` 時，常需要快速判斷是不是這些 **長連線 / 低 deadline** 的 handler 在共振。
+
+常見與 healing 直接相關的 peer REST handlers（不同 RELEASE tag 可能略有增減，但檔名 + pattern 很穩）：
+
+- `cmd/peer-rest-client.go`
+  - `func (client *peerRESTClient) BackgroundHealStatus() (madmin.BgHealState, error)`
+
+- `cmd/peer-rest-server.go`
+  - `func (s *peerRESTServer) BackgroundHealStatusHandler(_ *grid.MSS) (*grid.JSON[madmin.BgHealState], *grid.RemoteErr)`
+  - `func (s *peerRESTServer) HealBucketHandler(mss *grid.MSS) (grid.NoPayload, *grid.RemoteErr)`
+    - 內部常見會呼叫：`healBucketLocal(ctx, bucket, madmin.HealOpts{...})`
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# client ↔ server 對齊
+ls cmd/peer-rest-client.go cmd/peer-rest-server.go
+
+grep -RIn "BackgroundHealStatus" -n cmd/peer-rest-client.go cmd/peer-rest-server.go | head -n 80
+grep -RIn "HealBucketHandler" -n cmd/peer-rest-server.go | head -n 80
+
+# handler id（以 grid.Handler* 形式命名）
+grep -RIn "HandlerBackgroundHealStatus|HandlerHealBucket" -n internal/grid cmd/peer-rest-*.go | head -n 120
+
+# local 落點（bucket heal 如何放大成大量 object heal）
+grep -RIn "func healBucketLocal" -n cmd | head -n 80
+```
+
 ---
 
 ## C) 跟 `canceling remote connection` 的關聯：何時會共振
