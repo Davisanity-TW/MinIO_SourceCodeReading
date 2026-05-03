@@ -121,6 +121,41 @@ grep -n "type partialOperation" cmd/mrf.go
 grep -n "func (m \\*mrfState) addPartialOp" cmd/mrf.go
 ```
 
+### A.6（補）從 PutObject 走到 Healing 的「最短 callchain」：你在 log/pprof 看到一段就能定位另一段
+
+> 目的：把 PutObject（寫入）和 Healing（重建）之間的關係，用 **可 grep 對齊** 的方式釘死。
+> 
+> 一個常見的現場故事是：
+> 1) PutObject 進入 encode/write/rename
+> 2) 某些 disk/節點在 rename/metadata 上出錯或 timeout → 留 partial
+> 3) MRF queue enqueue
+> 4) MRF consumer 拉起 healRoutine，最後進 HealObject/healObject
+>
+**典型鏈（高度抽象，但每個箭頭都有對應函式錨點）：**
+- `PutObjectHandler` → `ObjectLayer.PutObject` → `erasureObjects.putObject`
+- （錯誤/partial）`erasureObjects.addPartial` → `mrfState.addPartialOp`
+- （背景修復）`mrfState.healRoutine` → `(*erasureServerPools).HealObject` → `(*erasureObjects).healObject`
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# PutObject 主線
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
+
+# partial → MRF enqueue
+grep -n "func (er erasureObjects) addPartial" cmd/erasure-object.go
+grep -n "func (m \\*mrfState) addPartialOp" cmd/mrf.go
+
+# MRF consumer → HealObject
+grep -n "func (m \\*mrfState) healRoutine" cmd/mrf.go
+grep -RIn "\\.HealObject\\(" -n cmd/mrf.go | head -n 80
+
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head -n 40
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd | head -n 40
+```
+
 ---
 
 ## B) Healing：MRF/scanner/admin → HealObject() → erasureObjects.healObject（重建/寫回）

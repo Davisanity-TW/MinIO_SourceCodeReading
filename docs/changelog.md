@@ -1,3 +1,4 @@
+- 2026-05-04 06:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-real-functions.md`，補上「PutObject 留 partial → MRF enqueue → MRF consumer → HealObject/healObject」的最短可 grep callchain（讓 incident 看到任一端 stack/log 都能快速回鏈到另一端）。
 - 2026-05-03 14:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-real-functions.md`，補上 healObject() 本地寫回常用錨點（writeAllDisks/writeUniqueFileInfo/xlStorage.WriteAll/WriteMetadata），讓 pprof/stackdump 更快對齊「卡在 meta/寫回/rename」。
 - 2026-05-03 14:00（Asia/Taipei）：Troubleshooting：更新 `docs/troubleshooting/canceling-remote-connection-root-causes.md`，在 sanity check 補一句：同窗抓 peer REST/grid handler（BackgroundHealStatus/HealBucketHandler）是否堆積，用來快速從「網路」切到「handler 排隊 / disk tail latency」。
 - 2026-05-02 22:00（Asia/Taipei）：Trace：更新 `docs/trace/putobject-healing-callchain.md`，補齊 MRF enqueue→consumer→`HealObject()` 的最短「實際函式/檔案/呼叫鏈」段落（方便 incident note 直接貼硬錨點、避免只停在抽象描述）。
