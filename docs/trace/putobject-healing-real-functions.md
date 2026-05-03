@@ -207,7 +207,39 @@ grep -RIn "func (e Erasure) Heal" -n cmd | head -n 40
 grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/erasure-healing.go | head -n 120
 ```
 
-### B.6（補）Healing 需要跨節點時：Peer REST（grid RPC）的實際 handler / 檔案錨點
+### B.6（補）healObject() 的「本地寫回」常用錨點（快速判斷卡在哪個階段）
+
+> 目的：你在 pprof/stackdump 看到 goroutine 卡住時，能一眼把它歸類到
+> - 讀 meta
+> - RS rebuild
+> - 寫回 data/xl.meta
+> - rename/commit
+>
+常見落點（不同 release 可能檔名/receiver 微調，但 pattern 很穩）：
+- `cmd/erasure-healing.go`
+  - `func (er *erasureObjects) healObject(...)`（主流程）
+  - `writeAllDisks(...)` / `writeUniqueFileInfo(...)`（寫回 xl.meta 的 fan-out）
+  - `renameData(...)` / `commitRenameDataDir(...)`（最後 commit）
+- `cmd/xl-storage.go`
+  - `func (s *xlStorage) WriteAll(...)` / `WriteMetadata(...)`（實際落到檔案系統）
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# 主流程：healObject 內部會分段呼叫下列 helper
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
+
+# 寫回/metadata fan-out helper（名稱跨版本可能略不同，但 grep anchor 很好用）
+grep -RIn "writeAllDisks\\(" -n cmd/erasure-healing.go | head -n 80
+grep -RIn "writeUniqueFileInfo" -n cmd/erasure-healing.go | head -n 80
+
+# 真的寫到 FS 的 API（用來對齊 strace/latency）
+grep -RIn "func \\(.+\\*xlStorage\\) WriteAll" -n cmd/xl-storage.go
+grep -RIn "WriteMetadata" -n cmd/xl-storage.go | head -n 80
+```
+
+### B.7（補）Healing 需要跨節點時：Peer REST（grid RPC）的實際 handler / 檔案錨點
 
 > 目的：把「heal/status/調度」這類跨節點 RPC 的 handler 名稱釘死；現場看到 `canceling remote connection` 時，常需要快速判斷是不是這些 **長連線 / 低 deadline** 的 handler 在共振。
 

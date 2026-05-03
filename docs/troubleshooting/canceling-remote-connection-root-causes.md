@@ -34,6 +34,7 @@
 
 如果有，先把它視為「壓力下的連線中止」：
 - 先找 **哪台 node / 哪個 pool/drive** 是瓶頸，而不是只盯著網路。
+- 補抓同時間的 peer REST/grid handler（例如 `BackgroundHealStatus`、`HealBucketHandler`）是否大量堆積：這能快速把問題從「網路」切到「handler 排隊 / disk tail latency」。
 
 ### 1.2 這個訊息是出現在 *server* 還是 *client*？
 - server 端：通常是 **對端太慢 / 連線被回收 / watchdog 觸發**
