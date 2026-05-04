@@ -182,3 +182,72 @@ sudo strace -fp <PID> -tt -T -e trace=rename,renameat,renameat2,fsync,fdatasync,
 - node 的 iostat 摘要（哪顆盤 await 異常）
 - 是否有重啟 / OOM / throttling
 
+---
+
+## 6) 你會一起看到的錯誤訊息（log pattern → 優先檢查什麼）
+
+> 這裡是把我實際遇到/常看到的「共振訊息」整理成一張對照表，讓你拿到一段 log 就能立刻決定下一步要抓什麼。
+>
+> 原則：不要把它當成「一定是網路」；多數情況是 **handler 排隊 / disk tail latency** 先發生，網路訊息只是後果。
+
+### 6.1 `canceling remote connection ... not seen for`（server）
+優先懷疑：
+- 磁碟/檔案系統 tail latency（rename/fsync/xl.meta）
+- CPU throttling / goroutine 飽和（ping handler 排不到）
+
+立刻做：
+1) 對齊同一時間窗（±2 分鐘）另一端（client）是否有 `ErrDisconnected` / timeout
+2) 受影響 node 先抓 `iostat -x 1`（或至少看 await/%util）
+3) 若能抓 stackdump/pprof：看 goroutine 是否大量卡在 `RenameData` / `commitRenameDataDir` / `readAllFileInfo`
+
+Code anchors：
+```bash
+cd /path/to/minio
+
+grep -RIn "canceling remote connection" -n internal/grid | head
+
+grep -RIn "checkRemoteAlive\\(" -n internal/grid/muxserver.go | head -n 80
+grep -RIn "lastPingThreshold|LastPing" -n internal/grid/muxserver.go | head -n 120
+```
+
+### 6.2 `ErrDisconnected` / `context deadline exceeded`（client）
+優先懷疑：
+- 對端已經忙到 pong 回不來（仍然是 disk/CPU 壓力居多）
+- 少數情況才是連線本身（drops/conntrack）
+
+立刻做：
+- 去對端找同時間的 `canceling remote connection`
+- 若只發生在跨節點 healing 相關 handler（例如 `BackgroundHealStatus`）：優先查 healing/scanner/MRF 壓力
+
+Anchors：
+```bash
+cd /path/to/minio
+
+grep -RIn "ErrDisconnected" -n internal/grid | head
+
+grep -RIn "clientPingInterval|LastPong" -n internal/grid/muxclient.go | head -n 120
+```
+
+### 6.3 同時看到 healing/MRF 的線索（PutObject ↔ partial ↔ heal）
+常見共振：
+- `MRF` queue 有 enqueue / drop
+- scanner/heal routine goroutine 變多
+- PutObject 在 rename/commit 時慢 → 留 partial → 觸發 heal
+
+快速對齊（最短 grep）：
+```bash
+cd /path/to/minio
+
+# PutObject 主線
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
+
+# partial → MRF
+grep -n "func (er erasureObjects) addPartial" cmd/erasure-object.go
+grep -n "func (m \\*mrfState) addPartialOp" cmd/mrf.go
+
+# MRF consumer → HealObject
+grep -n "func (m \\*mrfState) healRoutine" cmd/mrf.go
+grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head -n 40
+```
+
