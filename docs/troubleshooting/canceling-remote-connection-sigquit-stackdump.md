@@ -1,94 +1,101 @@
-# 快速蒐證：用 SIGQUIT 取得 MinIO goroutine stack dump（對齊 `canceling remote connection` 的「對端忙」假說）
+# canceling remote connection：用 SIGQUIT 抓 goroutine dump（快速判斷是不是「對端忙」）
 
-> 用途：當你懷疑 `canceling remote connection ... not seen for ~60s` 不是網路掉包，而是 **remote 節點忙到 ping handler 跑不動**（I/O latency、GC、鎖競爭、healing/scanner/MRF/rebalance）時，最快、最不需要預先開 pprof 的蒐證方式之一，就是在 **remote 節點**對 MinIO process 送一次 `SIGQUIT`，讓它在 stderr/journald 打出 **所有 goroutine 的堆疊**。
+> 目標：當你看到
 >
-> 你要的是：把同一時間窗（T±1m）內的 stack dump，跟 `iostat -x` / `mc admin trace --type internal` / healing 狀態一起貼進 incident note，讓後續可以直接從 stack 看到「卡在 I/O / rename / metadata fan-out / erasure heal / grid handler」哪一類。
-
-延伸閱讀（本 repo）：
-- `docs/troubleshooting/canceling-remote-connection.md`
-- `docs/troubleshooting/canceling-remote-connection-field-checklist.md`
-- `docs/trace/putobject-healing-callchain.md`
-
----
-
-## 0) 風險與注意事項
-- `SIGQUIT` 會讓 Go runtime **同步輸出大量文字**（goroutine dump），可能瞬間刷爆 log；但它不會像 `SIGKILL` 一樣直接殺掉 process。
-- 若你是在 Kubernetes：建議先確認 log 收集/sidecar 不會因為爆量而出事（例如 rate limit / buffer overflow）。
-- 只做 **一次** 通常就夠；不要連續狂打。
+> `WARNING: canceling remote connection A:9000->B:9000 not seen for 1m2.3s`
+>
+> 想快速確認是否屬於「B 節點忙到 grid ping handler 排不到（LastPing 不更新）」而不是純網路掉包。
+>
+> 核心想法：**抓一份 B 的 goroutine dump**，看是不是大量卡在 `RenameData()` / `fsync` / `readAllFileInfo()` / `erasure.Heal()` 等 I/O heavy 路徑。
 
 ---
 
-## 1) systemd / journald（主機上跑 minio service）
+## 1) 最快做法：對 MinIO process 送 SIGQUIT
 
-### 1.1 找到 PID
+在 **B 節點**：
+
 ```bash
-pidof minio || pgrep -x minio
+# 1) 找 PID（systemd / container 依環境調整）
+pidof minio
+
+# 2) 送 SIGQUIT（Go runtime 會把所有 goroutine stack dump 到 stderr）
+kill -QUIT <PID>
 ```
 
-### 1.2 送 SIGQUIT（goroutine dump）
+你會在 MinIO 的 stdout/stderr（或 systemd journal）看到一大段類似：
+- `goroutine 1234 [IO wait]:`
+- `goroutine 5678 [semacquire]:`
+
+若是 systemd：
 ```bash
-sudo kill -QUIT <PID>
+journalctl -u minio -n 2000 --no-pager
 ```
 
-### 1.3 立刻在同一時間窗撈 journald（抓 dump）
+若是 container：
 ```bash
-# 取最近 2 分鐘的 log（依你的事件時間窗調整）
-journalctl -u minio -S "2 min ago" -o short-iso | tail -n 800
-```
-
-> 建議做法：先在 incident note 記下 `canceling remote connection` 的 `local->remote`，然後在 **remote 節點**打 SIGQUIT；同時間窗再補抓 `iostat -x 1 3`。
-
----
-
-## 2) Kubernetes（Pod 內跑 minio）
-
-### 2.1 找到 minio process PID（在 Pod 內）
-```bash
-kubectl -n <ns> exec -it <minio-pod> -- sh -lc 'ps -o pid,comm,args | egrep "minio($| )"'
-```
-
-### 2.2 送 SIGQUIT
-```bash
-kubectl -n <ns> exec -it <minio-pod> -- sh -lc 'kill -QUIT <PID>'
-```
-
-### 2.3 抓 Pod logs（含 stack dump）
-```bash
-kubectl -n <ns> logs <minio-pod> --since=2m | tail -n 1200
+docker logs --tail 2000 <container>
 ```
 
 ---
 
-## 3) 你在 stack dump 裡最常要找的 5 類線索（對應到「為何 60s 沒更新 LastPing」）
+## 2) 你在 dump 裡最想找的幾類「指紋」
 
-> 目標是把堆疊分類，快速判斷是「網路」還是「remote 忙」。若 dump 內大量 goroutine 都在忙某一類工作，`canceling remote connection` 很可能是結果。
+### 2.1 明顯 I/O 卡住（最常造成 LastPing 不更新）
 
-1) **Healing / MRF / scanner**
-- `cmd/erasure-healing.go`：`(*erasureObjects).healObject`、`readAllFileInfo`、`RenameData`
-- `cmd/mrf.go`：`(*mrfState).healRoutine`
-- `cmd/data-scanner.go`：`applyHealing`
+常見關鍵字（任一命中就很可疑）：
+- `RenameData(` / `xlStorage).RenameData`
+- `fsync` / `fdatasync`
+- `readAllFileInfo(`（大量讀 `xl.meta`）
+- `erasure.Heal(`（背景補洞重建）
+- `renameat` / `pwrite` / `pread`
 
-2) **PutObject rename/commit（大量 metadata ops）**
-- `cmd/erasure-object.go`：`renameData`、`commitRenameDataDir`
-- storage 層：`cmd/xl-storage.go`：`(*xlStorage).RenameData`
+這時通常要回到 trace 對照：
+- `docs/trace/putobject-healing.md`（PutObject partial → MRF → HealObject → `RenameData()`）
+- `docs/troubleshooting/canceling-remote-connection-quick-triage.md`
 
-3) **grid / peer REST handler**
-- `internal/grid/*`：mux read/write loop、handler dispatch
-- `cmd/peer-rest-server.go`：BackgroundHealStatus/HealBucket 等
+### 2.2 goroutine 爆量/排隊（CPU/GC/鎖競爭）
 
-4) **I/O latency：卡在 syscall（read/write/fsync/rename）**
-- 堆疊底部常會看到 `syscall.*` / `runtime.netpoll` 之外的檔案 I/O 路徑
+常見關鍵字：
+- `runtime.gopark` / `semacquire` 大量出現
+- `(*RWMutex).RLock` / `Lock` 大量等待
+- `GC worker` 很多 + `STW` 痕跡（少見但有）
 
-5) **鎖競爭 / runtime 壓力（mutex/blocking）**
-- 大量 goroutine `semacquire` / `sync.(*Mutex).Lock` / channel receive 可能表示排程/鎖競爭把 handler 拖慢
+若偏這類，除了 I/O，也要查：
+- CPU throttling（K8s requests/limits）
+- goroutine 泄漏（長連線/slow consumer）
+- 版本已知 bug（可再按版本去 upstream issues 搜）
 
 ---
 
-## 4) 建議貼進 incident note 的最小模板
-- 時間窗：`T ± 5m`
-- log：`canceling remote connection A:9000->B:9000 not seen for ~60s`
-- remote(B) iostat：`await=%s util=%s`
-- SIGQUIT dump：`已抓（附截取片段/檔案連結）`
-- 同時間背景任務：`healing/scanner/MRF/rebalance`（有/無）
+## 3) 把 dump 與 log/trace 對齊（incident note 建議欄位）
 
-> 後續回放時，把 SIGQUIT dump 內「最重的 10 條 goroutine 堆疊」摘出來就很夠用了；不需要整份全貼。
+建議你在事件筆記固定留：
+- time window：`T ± 5m`
+- canceling log 來源：`A->B` 與 `not seen for` 秒數
+- B 的 goroutine dump 取樣時間點
+- dump 中最顯眼的 1–3 條 stack（貼最上面幾行即可）
+- 同窗 I/O 指標：`iostat -x` 的 `await/%util`
+
+---
+
+## 4) 讀碼錨點（用 grep 固定，避免行號漂移）
+
+在對照的 MinIO source tree：
+
+```bash
+# grid watchdog（印出 canceling 的地方）
+grep -RIn "canceling remote connection" -n internal/grid | head
+
+grep -RIn "checkRemoteAlive\(" -n internal/grid/muxserver.go | head -n 80
+
+grep -RIn "LastPing" -n internal/grid/muxserver.go | head -n 80
+
+# 常見 I/O heavy 路徑（healing / rename）
+grep -RIn "func \(s \*xlStorage\) RenameData" -n cmd/xl-storage.go
+
+grep -RIn "readAllFileInfo\(" -n cmd | head
+
+grep -RIn "\\.Heal\(ctx" -n cmd | head
+```
+
+> 實務判讀：如果 dump 裡大量卡在 `RenameData/fsync/Heal/readAllFileInfo`，而 `retrans/RTO` 又不明顯，通常可以先把方向從「網路」移到「對端忙/資源壓力」。
