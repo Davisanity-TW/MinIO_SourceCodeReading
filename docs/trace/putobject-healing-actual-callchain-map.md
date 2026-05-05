@@ -64,6 +64,29 @@ grep -n "type partialOperation" cmd/mrf.go
 grep -n "func (m \\*mrfState) addPartialOp" cmd/mrf.go
 ```
 
+### （補）addPartial() 真正被呼叫的位置：你要把「哪一種錯誤」對回 PutObject 的哪一段
+
+> 目的：現場看到 PutObject timeout/rename/fsync 相關錯誤時，快速判斷它會不會留下 partial（以及留下的是 bucket/object/version 哪一個）。
+>
+> 小技巧：先用 `grep -RIn "\\.addPartial\\(" cmd/erasure-object.go` 找到 caller，再往上看是 `renameData/commitRenameDataDir/writeMetadata` 哪一段的 error branch。
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# 先找呼叫點（caller）
+grep -RIn "\\.addPartial\\(" cmd/erasure-object.go | head -n 60
+
+# 然後把它對齊到 rename/commit（常見出事點）
+grep -n "^func renameData" cmd/erasure-object.go
+grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 120
+
+# 有些版本會在 commit 後段檢查 offline disks / versions disparity 之類的分支
+# 看到 addPartial 周邊有這些字眼，通常就是「寫入達 quorum 但仍留洞」的情境
+grep -n "offline" cmd/erasure-object.go | head -n 120
+grep -n "versions" cmd/erasure-object.go | head -n 120
+```
+
 ---
 
 ## 3) Healing（MRF / scanner / admin）→ ObjectLayer.HealObject → healObject
