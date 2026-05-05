@@ -311,3 +311,5 @@
 
 - 2026-05-02 14:00（Asia/Taipei）：Trace：在 `putobject-healing-real-functions.md` 補上 healing 跨節點時的 peer REST（grid RPC）實際 handler/檔案/grep 錨點（BackgroundHealStatus / HealBucket / healBucketLocal）。
 - 2026-05-04 14:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 的 grid muxserver 精準錨點頁（`internal/grid/muxserver.go`：字串→function→LastPing/threshold→close）。
+
+- 2026-05-05 14:00（Asia/Taipei）：Trace：新增 PutObject/Healing「實際呼叫鏈對齊表」筆記頁（新頁 `docs/trace/putobject-healing-actual-callchain-map.md`），補強 PutObject→MRF→HealObject 與 grid canceling remote connection 的最短 grep 錨點。
