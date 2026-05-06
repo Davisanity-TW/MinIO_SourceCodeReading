@@ -43,6 +43,31 @@ grep -n "^func renameData" cmd/erasure-object.go
 grep -n "commitRenameDataDir" cmd/erasure-object.go | head
 ```
 
+### 1.1 PutObject 最短 call chain（把 incident 的 stack/log 對回「卡在哪一段」）
+
+> 你在現場最常想回答的是：「它現在卡在 handler 前置？encode/write tmp？rename/commit？還是 commit 後段的 versions/offline 分支？」
+>
+> 下面這條鏈用來把任何一段 stack/log 快速對齊到 source tree（不綁行號）。
+
+- `cmd/api-router.go`：`PutObjectHandler`（route）
+- `cmd/object-handlers.go`：`func (api objectAPIHandlers) PutObjectHandler`（auth/opts/stream）
+  - `.PutObject(ctx, bucket, object, r, opts)`（ObjectLayer interface）
+- `cmd/erasure-server-pool.go`：`func (z *erasureServerPools) PutObject`
+- `cmd/erasure-sets.go`：`func (s *erasureSets) PutObject`
+- `cmd/erasure-object.go`：`func (er erasureObjects) putObject`
+  - `newBitrotWriter(...)`（寫入 `.minio.sys/tmp`）
+  - `erasure.Encode(ctx, ...)`（fan-out 寫各 disk）
+  - `renameData(...)`（tmp → data dir）
+  - `commitRenameDataDir(...)`（可見性切換 / metadata commit / versions/offline 分支）
+
+快速把「rename/commit 卡住」釘死：
+```bash
+cd /path/to/minio
+
+grep -n "^func renameData" cmd/erasure-object.go
+grep -n "commitRenameDataDir" cmd/erasure-object.go | head -n 200
+```
+
 ---
 
 ## 2) PutObject 失敗後留下 partial（MRF enqueue）
