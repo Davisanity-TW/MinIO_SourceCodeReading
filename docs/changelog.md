@@ -316,3 +316,4 @@
 - 2026-05-04 14:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 的 grid muxserver 精準錨點頁（`internal/grid/muxserver.go`：字串→function→LastPing/threshold→close）。
 
 - 2026-05-05 14:00（Asia/Taipei）：Trace：新增 PutObject/Healing「實際呼叫鏈對齊表」筆記頁（新頁 `docs/trace/putobject-healing-actual-callchain-map.md`），補強 PutObject→MRF→HealObject 與 grid canceling remote connection 的最短 grep 錨點。
+- 2026-05-06 22:00（Asia/Taipei）：Troubleshooting：在 `canceling-remote-connection-callchain-short.md` 補上 grid muxserver watcher（`checkRemoteAlive` / `LastPing`）的最短 grep 錨點，方便把「canceling remote connection」直接釘到 watchdog 關閉路徑。

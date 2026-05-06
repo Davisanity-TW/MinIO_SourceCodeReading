@@ -32,6 +32,36 @@ rg -n "canceling remote connection" .
 
 > 若你 repo 沒有 `rg`：用 `grep -RIn` 取代。
 
+## 1.1（補）最常見的 watcher：`internal/grid/muxserver.go` 的 `checkRemoteAlive()`
+
+在多數版本裡，這句 log 最常出現在 **grid streaming mux** 的 watchdog 路徑：
+- 檔案：`internal/grid/muxserver.go`
+- 函式：`(*muxServer).checkRemoteAlive()`
+- 判斷依據：remote 的 `LastPing`（或相近命名）在一段時間內沒有更新
+- 動作：判定 peer 不健康 → `cancel/close` 該 remote connection → 打出 `canceling remote connection ... not seen for ...`
+
+把這條鏈用 grep 釘死（避免行號漂移）：
+```bash
+cd /path/to/minio
+
+# 1) log 字串在哪裡
+grep -RIn "canceling remote connection" -n internal/grid | head -n 50
+
+# 2) watcher function（通常就叫 checkRemoteAlive）
+grep -RIn "checkRemoteAlive\(" -n internal/grid/muxserver.go | head -n 80
+
+# 3) 這個 watcher 看的欄位（LastPing / lastPing / lastSeen 之類）
+grep -RIn "LastPing|lastPing|lastSeen" -n internal/grid/muxserver.go | head -n 120
+```
+
+你接下來要追的關鍵不是「為什麼它要關」，而是：**LastPing 為什麼沒有被更新？**
+- 如果 ping handler goroutine 卡住（I/O、CPU、runtime 排程、GC STW），LastPing 就不會更新
+- 如果 network path 真的斷（packet loss/conn reset），LastPing 也不會更新
+
+因此你在現場要把這句 log 歸類成「網路」或「資源壓力」時，最有效的佐證通常是：
+- 同時間窗是否有 `pprof/stack` 顯示大量 goroutine 卡在 `rename/fsync/readAllFileInfo/erasure.Heal`
+- 是否伴隨 `Healing/MRF/scanner` 活躍（見 `docs/trace/putobject-healing.md`）
+
 ## 2) 你該先確認的 5 件事（比追 code 更快收斂）
 
 1) **是否同時有 grid/peer timeout**
