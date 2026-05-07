@@ -140,6 +140,41 @@ grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head -n 40
 grep -RIn "func (er \\*erasureObjects) healObject" -n cmd | head -n 40
 ```
 
+### 3.1 HealObject 最短 call chain（把「背景修復」對回真正 I/O 熱點）
+
+> 現場你最常想回答的是：「現在是 *誰* 在觸發 healing？最後落在哪些 disk I/O？」
+> 下面這條鏈用來把 log/pprof/stack 對回到 source tree。
+
+- 觸發來源之一：`cmd/mrf.go`
+  - `func (m *mrfState) healRoutine(...)`（consumer loop）
+  - `z.HealObject(ctx, bucket, object, versionID, opts)`（ObjectLayer call）
+- ObjectLayer（fan-out / set 選擇）：
+  - `cmd/erasure-server-pool.go`：`func (z *erasureServerPools) HealObject(...)`
+  - `cmd/erasure-sets.go`：`func (s *erasureSets) HealObject(...)`
+- 真正幹活（erasure healing core）：
+  - `cmd/erasure-healing.go`：`func (er *erasureObjects) healObject(...)`
+    - `erasure.Heal(...)`（讀/寫 shards + reconstruct）
+    - `RenameData(...)` / `WriteAll(...)` / `Delete(...)`（依版本與情境差異）
+
+最短 anchors：
+```bash
+cd /path/to/minio
+
+# MRF consumer → HealObject
+grep -n "func (m \\*mrfState) healRoutine" cmd/mrf.go
+
+# heal fan-out
+grep -RIn "func (z \\*erasureServerPools) HealObject" cmd | head
+grep -RIn "func (s \\*erasureSets) HealObject" cmd | head
+
+# healing core
+grep -RIn "func (er \\*erasureObjects) healObject" cmd/erasure-healing.go
+
+# 盯 I/O 熱點（不同版本可能叫法略不同，用關鍵字找）
+grep -RIn "erasure\\.Heal" cmd/erasure-healing.go cmd | head
+grep -RIn "RenameData\\(" cmd | head
+```
+
 ---
 
 ## 4) `canceling remote connection`：把 log 釘到 grid/mux 的 watchdog

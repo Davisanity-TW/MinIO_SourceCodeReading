@@ -67,6 +67,11 @@ iostat -x 1 3
 
 那更可能是 **remote 忙到 ping handler 排不到**（LastPing 沒更新）→ watchdog 觸發 `checkRemoteAlive()`。
 
+特別常見的「共振訊號」（有看到就把 I/O 排在網路前面查）：
+- 同窗出現 `slow disk` / `iowait` 尖峰
+- PutObject latency 變長、甚至開始堆 MRF/healing
+- stack/pprof 看到大量 goroutine 卡在 `RenameData()`、`fsync`、`renameat2`、`readAllFileInfo()` 這類 I/O 端點
+
 最便宜的「快速佐證」：對 remote 節點抓一次 goroutine dump（SIGQUIT），看是否大量卡在 `RenameData()`/`fsync`/`readAllFileInfo()`/`erasure.Heal()` 這類路徑（詳見：`canceling-remote-connection-sigquit-stackdump.md`）。
 
 ### 1.3 任一節點：看 MinIO internal trace 的 grid 熱點（偏「誰把 grid 拖慢」）
