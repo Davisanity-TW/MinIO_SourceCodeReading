@@ -199,3 +199,31 @@ grep -RIn "Ping" internal/grid | head -n 80
 - `pprof`：確認 goroutine 是否大量卡在 rename/fsync/network poll
 - `strace`：看 `renameat2/fsync/pwrite` tail latency
 - 指標：healing 併發、MRF queue 深度、disk latency、inter-node RTT
+
+### 4.1 進一步補齊：從這句 log 追到「是誰 cancel」以及它看的健康條件
+
+> 目的：把你在 log 看到的 `canceling remote connection` 精準對回 *mux server/client 哪段 watchdog*。
+> 不同版本函式名可能略有差異，但大致都會落在 `internal/grid/muxserver.go` / `muxclient.go` 的連線生命週期與 keepalive 檢查。
+
+最短追法（不用行號）：
+```bash
+cd /path/to/minio
+
+# 1) 先直接找 log 所在檔案與周邊函式
+rg -n "canceling remote connection" internal/grid
+
+# 2) 在同一個檔案內往上追：通常會看到類似 "remote not alive"/"deadline"/"ping" 等判斷
+#    你要鎖定的是：哪個 goroutine 定期掃描 remoteConn / clientConn，然後觸發 close/cancel
+rg -n "checkRemoteAlive|keepalive|heartbeat|ping|pong|deadline|timeout" internal/grid/muxserver.go internal/grid/muxclient.go
+
+# 3) 把「alive 判斷」釘到具體欄位：lastPing/lastPong/lastMsg/lastRead/lastWrite（不同版本命名不同）
+rg -n "last(Ping|Pong|Read|Write|Msg)|time\.Since\(|time\.Now\(\)" internal/grid/muxserver.go internal/grid/muxclient.go
+
+# 4) 最後把 cancel/close 的實際動作抓出來（你要知道它關的是 conn、ctx、還是某個 stream）
+rg -n "Cancel\(|cancel\(|Close\(|close\(" internal/grid/muxserver.go internal/grid/muxclient.go
+```
+
+對照點（現場排查要抓的三件事）：
+- 這個 watchdog 的 **interval / deadline** 設定（是否被你改過、或版本預設變動）
+- `ping/pong` 的 handler 是否被 **CPU starvation / GC / disk stall** 影響到排程
+- 發生時同時是否有 **healing / PutObject rename/fsync** tail latency 上升（導致 grid RPC 長連線被誤判不健康）
