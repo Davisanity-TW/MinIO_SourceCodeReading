@@ -81,6 +81,30 @@ grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
 
 ### A.4 PutObject 真正動到 disk 的三個關鍵點
 
+#### A.4.1（補）RenameData 最後落到哪個實作？
+
+> 目的：當你在 strace/pprof 看到 `rename/renameat2`、`fdatasync/fsync` 卡住時，能快速把 syscall 對回 Go 函式。
+
+- 介面：`cmd/storage-interface.go` → `type StorageAPI interface { RenameData(...) }`
+- 常見實作：`cmd/xl-storage.go` → `func (s *xlStorage) RenameData(...)`
+- PutObject 端呼叫點：`cmd/erasure-object.go` → `disk.RenameData(...)`（逐 disk fan-out）
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# interface 定義（找方法簽名與語意）
+grep -RIn "type StorageAPI interface" -n cmd/storage-interface.go
+grep -RIn "RenameData\(" -n cmd/storage-interface.go
+
+# xlStorage 實作（最後會落到檔案系統 rename/sync）
+grep -RIn "func \(s \*xlStorage\) RenameData" -n cmd/xl-storage.go
+
+# 呼叫點（PutObject/Healing 都會用）
+grep -RIn "\.RenameData\(ctx" -n cmd/erasure-object.go cmd/erasure-healing.go | head -n 120
+```
+
+
 1) **encode + 寫 tmp**（bitrot writer）
 - `cmd/erasure-object.go`：`newBitrotWriter(...)` / `erasure.Encode(...)`
 

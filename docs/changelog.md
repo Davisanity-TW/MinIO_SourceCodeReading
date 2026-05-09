@@ -325,3 +325,4 @@
 
 - 2026-05-05 14:00（Asia/Taipei）：Trace：新增 PutObject/Healing「實際呼叫鏈對齊表」筆記頁（新頁 `docs/trace/putobject-healing-actual-callchain-map.md`），補強 PutObject→MRF→HealObject 與 grid canceling remote connection 的最短 grep 錨點。
 - 2026-05-06 22:00（Asia/Taipei）：Troubleshooting：在 `canceling-remote-connection-callchain-short.md` 補上 grid muxserver watcher（`checkRemoteAlive` / `LastPing`）的最短 grep 錨點，方便把「canceling remote connection」直接釘到 watchdog 關閉路徑。
+- 2026-05-09 22:00（Asia/Taipei）：Trace：在 `putobject-healing-real-functions.md` 補上 RenameData 最終落點（StorageAPI.RenameData → xlStorage.RenameData）的 grep 錨點；Troubleshooting：新增 `canceling remote connection` 事件筆記模板頁（incident note template + 現場對齊 anchors）。
