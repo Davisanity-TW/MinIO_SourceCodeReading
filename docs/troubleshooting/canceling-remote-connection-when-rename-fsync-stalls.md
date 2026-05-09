@@ -14,6 +14,7 @@
 - `docs/troubleshooting/canceling-remote-connection.md`（總頁）
 - `docs/troubleshooting/canceling-remote-connection-root-causes.md`（根因分類）
 - `docs/trace/putobject-healing-actual-callchain-map.md`（PutObject → partial/MRF → HealObject/healObject 的實際函式/檔案錨點）
+- `docs/trace/putobject-rename-fsync-actual-functions.md`（PutObject rename/fsync 的實際函式/檔案/呼叫鏈）
 
 ---
 
