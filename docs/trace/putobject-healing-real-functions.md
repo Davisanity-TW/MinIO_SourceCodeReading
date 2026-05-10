@@ -346,3 +346,6 @@ grep -RIn "canceling remote connection" -n internal/grid | head
 grep -RIn "checkRemoteAlive\\(" -n internal/grid/muxserver.go | head -n 80
 grep -RIn "clientPingInterval" -n internal/grid | head -n 80
 ```
+
+延伸（把 internal/grid 的實際函式/檔案/最短驗證流程補齊）：
+- `docs/trace/grid-canceling-remote-connection.md`

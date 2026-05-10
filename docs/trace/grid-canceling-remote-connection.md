@@ -1,105 +1,131 @@
-# Trace：`canceling remote connection`（MinIO internal/grid mux）到底是哪條 call chain？
+# Trace：`canceling remote connection`（internal/grid muxserver 實際函式/檔案/呼叫鏈）
 
-> 目標：把 production log 看到的：
-> - `canceling remote connection <peer> not seen for ...`
-> - `grid: ... ErrDisconnected` / peer RPC timeout
+> 目的：把你在 MinIO log 裡看到的 `canceling remote connection` 這句話，**精準對回到 internal/grid 的實際檔案與函式**，並補一條「現場怎麼驗證」的最短 callchain。
 >
-> 直接連到 MinIO `internal/grid` 的 **檔案/函式/欄位**，並提供一套「版本無關」的 grep 錨點。
+> 適用情境：
+> - PutObject / Healing 壓力上來後，節點開始噴 `canceling remote connection`
+> - 你需要判斷：是 network 斷線？還是 **server goroutine 被 I/O / lock / CPU starvation 拖到 ping/keepalive 超時**？
 >
-> 本頁偏 trace/讀碼；現場處置流程請看：
-> - `docs/troubleshooting/canceling-remote-connection.md`
+> 注意：不同 release tag 可能微調檔名或常數命名；本頁刻意只給 **穩定 grep anchors**（不寫行號）。
 
 ---
 
-## 0) TL;DR（你要在 incident note 寫的一句話）
+## A) 先把 log 錨到 internal/grid
 
-`canceling remote connection` 多半是 **server 端 mux watchdog**（`internal/grid/muxserver.go`）檢查到某個 peer 的 `LastPing` 超過門檻（常見 ~60s）後主動 close 連線；在 healing/scanner/MRF 很忙的時段，常見根因是 **資源壓力（排程/CPU/GC/I/O/鎖）** 讓 ping handler 沒有即時更新 `LastPing`，而不是「網路先壞」。
+最短 grep：
+```bash
+cd /path/to/minio
 
----
+grep -RIn "canceling remote connection" -n internal/grid | head -n 50
+```
 
-## 1) 你要先分清楚：這句 log 是誰印的？
-
-### 1.1 server 端：`muxserver` watchdog（最常見）
-
-關鍵檔案/函式（不同版本函式名可能略調，但通常仍可 grep 到）：
+你通常會看到它出現在類似下列檔案（依版本不同而略有差異）：
 - `internal/grid/muxserver.go`
-  - `(*muxServer).checkRemoteAlive()`（或同義 watchdog loop）
-  - 會讀某個 connection/remote 的 `LastPing` / `lastPing`，超時就：
-    - `canceling remote connection ... not seen for ...`
-    - `close()` / `Close()`
-
-### 1.2 client 端：`muxclient`（常先報錯，但不一定印同一句）
-
-常見現象是：
-- client 端先回報 `ErrDisconnected` / peer RPC timeout
-- server 端稍後（更長門檻）才印 `canceling remote connection`
-
-關鍵檔案：
 - `internal/grid/muxclient.go`
+- `internal/grid/handlers.go`（或 handler registry 類檔案）
 
 ---
 
-## 2) 門檻時間（例如 60s）通常怎麼算出來？
+## B) server 端：MuxServer 的「remote alive 檢查」鏈
 
-常見組合：
-- `clientPingInterval` 例如 `15s`
-- server 端門檻 `lastPingThreshold` 例如 `4 * clientPingInterval`（≈ `60s`）
+### B.1 核心判斷：`checkRemoteAlive(...)`
 
-版本無關 grep：
+Anchors：
 ```bash
 cd /path/to/minio
 
-grep -RIn "clientPingInterval" -n internal/grid | head -n 50
+grep -RIn "checkRemoteAlive\(" -n internal/grid | head -n 80
 
-grep -RIn "lastPingThreshold" -n internal/grid | head -n 80
+grep -RIn "canceling remote connection" -n internal/grid/muxserver.go internal/grid/muxclient.go | head -n 120
+```
+
+你要看的重點不是字串本身，而是 **觸發 cancel 的條件**，常見會包含：
+- ping/pong 沒在 deadline 內完成
+- remote 端 connection 狀態判定為 stale
+- mux 的 per-connection watchdog 發現 stream 卡死/無回應
+
+### B.2 時間參數（ping interval / deadline / jitter）
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# 常見是這類常數/變數命名（不同版本略不同）
+grep -RIn "ping" -n internal/grid | head -n 200
+
+grep -RIn "interval|deadline|timeout" -n internal/grid | head -n 200
+```
+
+現場判讀技巧：
+- 如果 timeout 值很短（例如秒級），在 **I/O tail latency** 大的時候更容易被誤判為 remote dead。
+- 如果 timeout 值偏長，但你仍看到大量 cancel，多半是 connection/handler 端真的「卡到無法 forward/pong」。
+
+---
+
+## C) client 端：為什麼 Healing/Peer REST 會放大成大量 grid 流量
+
+MinIO 在很多跨節點操作（包含 healing/status/調度）使用 grid/mux 之上的 RPC。
+
+你可以用這組 anchors 把 healing 相關 handler 釘死：
+```bash
+cd /path/to/minio
+
+# peer-rest 是最常見的入口
+ls cmd/peer-rest-client.go cmd/peer-rest-server.go
+
+grep -RIn "BackgroundHealStatus" -n cmd/peer-rest-client.go cmd/peer-rest-server.go | head -n 120
+
+grep -RIn "HealBucketHandler|HealBucket" -n cmd/peer-rest-server.go | head -n 200
+
+# internal/grid handler id（不同版本可能是 HandlerXxx / handlerXxx）
+grep -RIn "HandlerBackgroundHealStatus|HandlerHealBucket" -n internal/grid cmd/peer-rest-*.go | head -n 200
+```
+
+判讀：
+- healing 放大時：bg-heal 狀態查詢、bucket heal、object heal 會讓 **peer RPC 數量變多**。
+- 如果同時 PutObject 在做大量 rename/fsync，會讓 server 端 goroutine/CPU 被拖慢 → ping/pong 不及 → `canceling remote connection`。
+
+---
+
+## D) 最短「現場驗證」流程（把 log → root cause 路徑釘死）
+
+### D.1 先判斷是「網路」還是「資源 starvation」
+
+1) **同一時間點**抓：
+- MinIO log（含 `canceling remote connection` 前後 1–2 分鐘）
+- `iostat -x 1` / `pidstat -w -u 1 -p $(pidof minio)`
+- 若可：`strace -ttT -p <minio-pid> -f -e trace=fdatasync,fsync,rename,renameat2,openat,read,write`（短時間）
+
+2) 若看到：
+- disk `await` 飆高、`util` 接近 100%
+- 或 goroutine stack/pprof 顯示卡在 `(*xlStorage).RenameData` / `fdatasync`
+
+那通常是：**I/O tail latency → grid keepalive 超時 → cancel**（不是單純 network drop）。
+
+### D.2 把 cancel 與 PutObject/Healing 連起來（最短 callchain 回憶法）
+
+- PutObject：`PutObjectHandler` → `erasureObjects.putObject` → `renameData` → `disk.RenameData` → `(*xlStorage).RenameData`
+- Healing：`mrfState.healRoutine` / scanner → `HealObject` → `(*erasureObjects).healObject` → `writeAllDisks` / `RenameData`
+- 同時：peer REST/grid mux 需要 ping/pong 維持長連線
+
+如果你要快速把兩條線放在同一個 grep 脈絡：
+```bash
+cd /path/to/minio
+
+# PutObject/Healing 的 rename/fsync 端
+grep -RIn "func \(s \*xlStorage\) RenameData" -n cmd/xl-storage.go
+
+grep -RIn "commitRenameDataDir|renameData\(" -n cmd/erasure-object.go cmd/erasure-healing.go | head -n 200
+
+# grid 的 cancel 端
+grep -RIn "canceling remote connection" -n internal/grid | head -n 50
 ```
 
 ---
 
-## 3) 最小 code anchors（不靠行號、可貼 incident note）
+## E) 你要補進 troubleshooting 的最小結論（可直接引用）
 
-```bash
-cd /path/to/minio
+> `canceling remote connection` 多數時候不是「網路線斷了」，而是 **server 端在 deadline 內無法回應 ping/pong 或 forward**。
+> PutObject/Healing 把 rename/fsync/metadata 的 tail latency 拉高，是最常見的共振來源。
 
-# 1) 找到 log 字串（最穩）
-grep -RIn "canceling remote connection" -n internal/grid | head
-
-# 2) watchdog / alive check 的函式
-grep -RIn "checkRemoteAlive\(" -n internal/grid/muxserver.go | head -n 80
-
-# 3) watchdog 讀寫的核心欄位（LastPing/LastPong/lastPing 等）
-grep -RIn "LastPing" -n internal/grid/muxserver.go | head -n 120
-
-grep -RIn "LastPong" -n internal/grid/muxclient.go | head -n 120
-
-# 4) client 端斷線錯誤
-grep -RIn "ErrDisconnected" -n internal/grid/muxclient.go internal/grid/connection.go | head -n 120
-```
-
----
-
-## 4) 跟 PutObject / Healing 的關聯：為什麼常在補洞時一起爆？
-
-你在現場常看到這種組合：
-- healing / scanner / MRF 活躍（尤其大量 `RenameData()` / `fsync`）
-- 同時間出現 `canceling remote connection`
-
-最短因果鏈（可回鏈到 code）：
-1) `PutObject` quorum 達成但留下 partial → `addPartial()` → enqueue MRF
-2) MRF/scanner 觸發 `HealObject` / `healObject`
-3) `healObject` 內部 `readAllFileInfo` / `erasure.Heal` / `RenameData` 放大 I/O 與排程壓力
-4) mux 的 ping handler 沒被即時排程或被 syscall/鎖拖慢 → `LastPing` 更新延遲 → watchdog 斷線
-
-對照讀碼：
-- PutObject ↔ MRF ↔ healObject：`docs/trace/putobject-healing.md`
-- `canceling remote connection` 現場處置：`docs/troubleshooting/canceling-remote-connection.md`
-
----
-
-## 5) 你要蒐證「不是純網路」的 3 個快速指標
-
-1) **磁碟 I/O latency / await** 與 log 時窗強相關（尤其 rename/fsync 高峰）
-2) pprof/block profile 顯示大量時間卡在 syscall（rename/fsync/open）或 mutex contention
-3) healing/MRF/scanner trace 指標在同時間窗明顯上升
-
-> 如果 1~3 都成立，通常要先把 remediation 放在「降低背景修復壓力 / 限速 / 分流 / 釐清壞盤」而不是只換網路。
+（對應的排查 checklist 建議放在：`docs/troubleshooting/canceling-remote-connection-quick-triage.md` 與 `...decision-tree.md`）
