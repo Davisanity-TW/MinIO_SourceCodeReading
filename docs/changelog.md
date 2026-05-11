@@ -331,3 +331,4 @@
 - 2026-05-09 22:00（Asia/Taipei）：Trace：在 `putobject-healing-real-functions.md` 補上 RenameData 最終落點（StorageAPI.RenameData → xlStorage.RenameData）的 grep 錨點；Troubleshooting：新增 `canceling remote connection` 事件筆記模板頁（incident note template + 現場對齊 anchors）。
 - 2026-05-10 06:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` log signatures/版本差異速查頁（直接把 log 文字對回 `internal/grid/muxserver.go|muxclient.go` keepalive/watchdog 的 grep anchors）。
 - 2026-05-10 22:00（Asia/Taipei）：Trace：新增 `canceling remote connection` 的 internal/grid 呼叫鏈筆記頁（新頁 `docs/trace/grid-canceling-remote-connection.md`），並在 PutObject/Healing 實際函式頁補上延伸連結，方便從 log 直接定位到 muxserver watchdog/keepalive 與現場驗證流程。
+- 2026-05-12 06:00 補強 canceling remote connection：quick triage 增加 ping handler 被 I/O 壓垮的判斷，新增 SIGQUIT goroutine dump signatures 筆記頁。

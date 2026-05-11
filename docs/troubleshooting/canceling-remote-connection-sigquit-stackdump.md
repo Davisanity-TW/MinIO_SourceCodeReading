@@ -1,101 +1,111 @@
-# canceling remote connection：用 SIGQUIT 抓 goroutine dump（快速判斷是不是「對端忙」）
+# canceling remote connection：用 SIGQUIT goroutine dump 快速判斷「對端忙」是哪一種忙
 
-> 目標：當你看到
+> 目的：當你看到
 >
-> `WARNING: canceling remote connection A:9000->B:9000 not seen for 1m2.3s`
+> `canceling remote connection A:9000->B:9000 not seen for ~60s`
 >
-> 想快速確認是否屬於「B 節點忙到 grid ping handler 排不到（LastPing 不更新）」而不是純網路掉包。
+> 但 `ss -ti` 看不出明顯 retrans/RTO、或現場也同時有 PutObject latency / healing/scanner/MRF 活躍時，最快的佐證方式之一是：
+> - **對被 cancel 的那台節點（remote B）**送 `SIGQUIT` 拿一份 goroutine dump
+> - 用關鍵字把 goroutine 大量卡住的點分類
 >
-> 核心想法：**抓一份 B 的 goroutine dump**，看是不是大量卡在 `RenameData()` / `fsync` / `readAllFileInfo()` / `erasure.Heal()` 等 I/O heavy 路徑。
+> 這份筆記的目標不是「完整解讀 stackdump」，而是提供 **5 分鐘內可 grep 的 signature**，用來把方向快速分成：
+> - (A) I/O rename/fsync 壅塞
+> - (B) healing/scanner/MRF fan-out 壅塞
+> - (C) grid ping handler 本身排不到（症狀，不是 root cause）
+> - (D) GC / CPU throttling
 
 ---
 
-## 1) 最快做法：對 MinIO process 送 SIGQUIT
+## 1) 拿到 goroutine dump（建議在 remote B 執行）
 
-在 **B 節點**：
+### 1.1 systemd 環境（最常見）
 
+1) 找 PID（或直接看 service 主 PID）：
 ```bash
-# 1) 找 PID（systemd / container 依環境調整）
-pidof minio
-
-# 2) 送 SIGQUIT（Go runtime 會把所有 goroutine stack dump 到 stderr）
-kill -QUIT <PID>
+systemctl status minio
 ```
 
-你會在 MinIO 的 stdout/stderr（或 systemd journal）看到一大段類似：
-- `goroutine 1234 [IO wait]:`
-- `goroutine 5678 [semacquire]:`
-
-若是 systemd：
+2) 送 SIGQUIT：
 ```bash
-journalctl -u minio -n 2000 --no-pager
+sudo kill -QUIT <PID>
 ```
 
-若是 container：
+3) 到 log 裡找 dump（可能會很長）：
 ```bash
-docker logs --tail 2000 <container>
+journalctl -u minio --since "-5min" | less
 ```
+
+> 注意：SIGQUIT 會把 stackdump 印到 stderr/stdout（systemd journal）。
+
+### 1.2 container/K8s
+
+- 找到對應 container 後 `kill -QUIT 1`（或主程序 PID）。
+- 若沒權限送 signal：用 `kubectl exec` 進去，再送。
 
 ---
 
-## 2) 你在 dump 裡最想找的幾類「指紋」
+## 2) 先做粗分類：最便宜的 grep signatures
 
-### 2.1 明顯 I/O 卡住（最常造成 LastPing 不更新）
+把 dump 存成檔案（例如 `/tmp/minio.goroutines.txt`）後：
 
-常見關鍵字（任一命中就很可疑）：
-- `RenameData(` / `xlStorage).RenameData`
-- `fsync` / `fdatasync`
-- `readAllFileInfo(`（大量讀 `xl.meta`）
-- `erasure.Heal(`（背景補洞重建）
-- `renameat` / `pwrite` / `pread`
-
-這時通常要回到 trace 對照：
-- `docs/trace/putobject-healing.md`（PutObject partial → MRF → HealObject → `RenameData()`）
-- `docs/troubleshooting/canceling-remote-connection-quick-triage.md`
-
-### 2.2 goroutine 爆量/排隊（CPU/GC/鎖競爭）
-
-常見關鍵字：
-- `runtime.gopark` / `semacquire` 大量出現
-- `(*RWMutex).RLock` / `Lock` 大量等待
-- `GC worker` 很多 + `STW` 痕跡（少見但有）
-
-若偏這類，除了 I/O，也要查：
-- CPU throttling（K8s requests/limits）
-- goroutine 泄漏（長連線/slow consumer）
-- 版本已知 bug（可再按版本去 upstream issues 搜）
-
----
-
-## 3) 把 dump 與 log/trace 對齊（incident note 建議欄位）
-
-建議你在事件筆記固定留：
-- time window：`T ± 5m`
-- canceling log 來源：`A->B` 與 `not seen for` 秒數
-- B 的 goroutine dump 取樣時間點
-- dump 中最顯眼的 1–3 條 stack（貼最上面幾行即可）
-- 同窗 I/O 指標：`iostat -x` 的 `await/%util`
-
----
-
-## 4) 讀碼錨點（用 grep 固定，避免行號漂移）
-
-在對照的 MinIO source tree：
+### 2.1 I/O：rename/fsync/fdatasync（PutObject / heal writeback 最常卡）
 
 ```bash
-# grid watchdog（印出 canceling 的地方）
-grep -RIn "canceling remote connection" -n internal/grid | head
-
-grep -RIn "checkRemoteAlive\(" -n internal/grid/muxserver.go | head -n 80
-
-grep -RIn "LastPing" -n internal/grid/muxserver.go | head -n 80
-
-# 常見 I/O heavy 路徑（healing / rename）
-grep -RIn "func \(s \*xlStorage\) RenameData" -n cmd/xl-storage.go
-
-grep -RIn "readAllFileInfo\(" -n cmd | head
-
-grep -RIn "\\.Heal\(ctx" -n cmd | head
+grep -nE "renameat2|rename\(|fdatasync|fsync|pwrite|write\(" -n /tmp/minio.goroutines.txt | head -n 80
 ```
 
-> 實務判讀：如果 dump 裡大量卡在 `RenameData/fsync/Heal/readAllFileInfo`，而 `retrans/RTO` 又不明顯，通常可以先把方向從「網路」移到「對端忙/資源壓力」。
+對應讀碼錨點（把 syscall 對回 Go 路徑）：
+- `cmd/xl-storage.go: func (s *xlStorage) RenameData(...)`
+- `cmd/erasure-object.go: renameData(...) / commitRenameDataDir(...)`
+- `cmd/erasure-healing.go: (*erasureObjects).healObject(...)`（writeback + commit）
+
+> 若此類 signature 佔比很高，優先查：底層磁碟/RAID/檔案系統延遲、I/O throttling、資源競爭（同 host 上是否有其他 noisy neighbor）。
+
+### 2.2 Healing/Scanner/MRF：大量 goroutine 卡在 fan-out/讀 meta
+
+```bash
+grep -nE "healObject\(|HealObject\(|applyHealing|readAllFileInfo\(|mrfState\)\.healRoutine" -n /tmp/minio.goroutines.txt | head -n 120
+```
+
+常見解讀：
+- `readAllFileInfo(...)` 堆積：meta fan-out 讀 xl.meta 卡住（I/O 或單顆盤慢）
+- `erasure\.Heal` 出現多：RS rebuild/讀取 shard 來源卡住（I/O 或 CPU）
+- `mrfState.healRoutine` 很多：PutObject partial → MRF queue 在積壓
+
+### 2.3 grid / ping / mux：症狀層，通常不是 root cause
+
+```bash
+grep -nE "internal/grid|muxServer\)\.ping|checkRemoteAlive|OpPing|handlePing" -n /tmp/minio.goroutines.txt | head -n 120
+```
+
+常見解讀：
+- 看到很多 goroutine 卡在 grid mux 相關：
+  - 可能是 **對端整體排程壓力**（CPU throttling / runqueue 高）
+  - 或是 **I/O 壓力**讓整個程序卡住（包含 ping handler）
+
+> 方向：不要只修 grid；要回去找「讓整個節點忙到 ping 排不到」的上游原因。
+
+### 2.4 GC / CPU：Stop-the-world 或 throttling
+
+```bash
+grep -nE "runtime\.gc|GC worker|mark worker|scavenge|sysmon" -n /tmp/minio.goroutines.txt | head -n 120
+```
+
+搭配系統指標看：
+- `top` / `pidstat -p <PID> 1` CPU 飆高？
+- cgroup throttling（K8s：`container_cpu_cfs_throttled_seconds_total`）？
+
+---
+
+## 3) 最短結論模板（incident note 可直接貼）
+
+> 在 remote 節點（B）同時間窗（T±5m）抓取 goroutine dump，觀察到大量 goroutine 卡在：
+> - （填）`xlStorage.RenameData` / `renameData` / `readAllFileInfo` / `erasureObjects.healObject`
+> 推測節點 I/O/背景修復壓力導致 grid 心跳（LastPing）更新延遲，觸發 `canceling remote connection ... not seen for ~60s`。
+
+---
+
+## 4) 延伸閱讀
+
+- 快速分流主頁：`docs/troubleshooting/canceling-remote-connection-quick-triage.md`
+- PutObject ↔ Healing 實際函式/檔案錨點：`docs/trace/putobject-healing-real-functions.md`
