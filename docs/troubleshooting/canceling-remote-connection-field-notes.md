@@ -1,135 +1,115 @@
-# Field Notes：`canceling remote connection`（我實際遇到的現場筆記模板 + 常見落點）
+# Troubleshooting：`canceling remote connection`（我在現場遇到的筆記：log 片段 → 下一步）
 
-> 目的：把我現場真的遇到的 `canceling remote connection` 類型訊息，整理成「可直接照著跑」的排查筆記頁。
->
-> 這頁刻意偏 *實戰流程*：先把時間窗、同時期背景任務（healing/scanner/rebalance）、以及 I/O/GC/pprof 對齊；再回頭用 code anchor 佐證。
+> 目的：把我實際遇到過的訊息（以及容易一起出現的訊息）整理成一頁「拿到 log 就能動手」的筆記。
+> 
+> 重要觀念：這句在 MinIO 多數時候是 **grid/peer REST watchdog 的結果**，根因往往是 **disk tail latency 或 handler 排隊**（特別是 healing / PutObject 高壓期）。
 
-延伸閱讀（同 repo）：
-- 主頁：`docs/troubleshooting/canceling-remote-connection.md`
-- 快速 triage：`docs/troubleshooting/canceling-remote-connection-quick-triage.md`
-- symptom → cause：`docs/troubleshooting/canceling-remote-connection-symptom-to-cause.md`
-- code anchors：`docs/troubleshooting/canceling-remote-connection-codepath.md`
-- 與 PutObject/Healing 的關聯：`docs/trace/putobject-healing.md`
-
----
-
-## 1) 你看到的訊息長什麼樣？（先把原始 log 釘住）
-
-我現場最常遇到的核心字串就是：
-
-- `canceling remote connection`
-
-通常會跟「多久沒看到 ping」綁在一起（不同版本/格式可能略有差）：
-- `... not seen for ...`
-
-### 1.1 先做兩個基本紀錄（不然後面很難對齊）
-
-在 incident note 一開始就固定寫：
-- **T（時間窗）**：例如 `T = 2026-04-23 21:57~22:10 (Asia/Taipei)`
-- **哪兩個節點之間**：`nodeA -> nodeB`（最好含 IP/hostname）
-- **同時間窗是否有 healing/scanner**：
-  - `mc admin heal ...` 有沒有在跑？
-  - console/alert 有沒有顯示 background healing？
-  - `mrf`（Most Recently Failed）queue 是否活躍？
-
-> 直覺：這類 log 很容易被誤判成「網路壞了」。但我實際遇到過的案例裡，更多是 **節點忙到 ping handler 排不到**（I/O/GC/metadata ops）導致的 watchdog 斷線。
+相關頁：
+- Root cause map：`docs/troubleshooting/canceling-remote-connection-root-causes.md`
+- Quick triage：`docs/troubleshooting/canceling-remote-connection-quick-triage.md`
+- Code anchors：`docs/trace/grid-canceling-remote-connection.md`
+- PutObject ↔ Healing：`docs/trace/putobject-healing-real-functions.md`
 
 ---
 
-## 2) 我用的最小排查順序（先判斷是「網路」還是「資源壓力」）
+## 1) 你會看到的典型 log（server）
 
-### 2.1 先看同時間窗：I/O latency / disk busy 有沒有尖峰
+常見片段（示意，字串關鍵在 `canceling remote connection` + `not seen for`）：
 
-（在 node 上）
-- `iostat -x 1`：看 `await`、`svctm`、`%util`
-- `pidstat -d 1 -p $(pidof minio)`：看 minio 進程是否有大量 block I/O
-
-判讀（我實務上最常用的三個訊號）：
-- `await` 飆高 + `%util` 幾乎 100%：偏向 disk bottleneck
-- 大量 `mkdir/rename/fsync` 類型 metadata 壓力（見下節 pprof/trace）
-- 某一顆 disk 特別慢（單顆 device 的 await 很突出）→ healing/rename 很容易被拖死
-
-### 2.2 再看 goroutine/pprof：是不是卡在 rename / fsync / xl.meta fan-out
-
-我會優先找三種 stack pattern：
-
-1) **Healing heavy path**
-- `(*erasureObjects).healObject` → `erasure.Heal` → `RenameData`
-
-2) **PutObject commit heavy path**
-- `renameData` / `commitRenameDataDir` → `(*xlStorage).RenameData`
-
-3) **metadata fan-out**
-- `readAllFileInfo`（大量讀 `xl.meta`）
-
-對應的 code anchors（用 grep 固定錨點，避免行號漂移）：
-```bash
-cd /path/to/minio
-
-grep -RIn "canceling remote connection" -n internal/grid | head
-
-grep -RIn "^func renameData" -n cmd/erasure-object.go
-grep -RIn "commitRenameDataDir" -n cmd/erasure-object.go | head
-
-grep -RIn "^func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
-
-grep -RIn "readAllFileInfo\(" -n cmd/erasure-healing.go cmd/*.go | head
-
-grep -RIn "func (s \\*xlStorage) RenameData" -n cmd/xl-storage.go
+```
+... grid: canceling remote connection <node-id> (not seen for 1m0s)
 ```
 
-> 我自己的經驗：只要 healing/renameData/RenameData 這段 tail latency 被拖長，grid streaming mux 的 ping/pong 就很容易超時，最後印出 `canceling remote connection`。
+**我會先做的 3 件事（順序固定）：**
+1) 在 client 端同時間窗（±2 分鐘）找 `ErrDisconnected` / `context deadline exceeded` / `i/o timeout`
+2) 看同時間是否有 healing/scanner/MRF（或 admin heal）正在跑
+3) 直接查受影響節點的 disk tail latency（`iostat -x 1` / `pidstat -d 1`）
+
+因為多數案例是：**disk rename/fsync/xl.meta latency 拉高 → handler 回不來 → watchdog 斷線**。
 
 ---
 
-## 3) 把「為什麼突然開始 heal」對齊：PutObject → partial(MRF) → HealObject
+## 2) 我最常一起看到的「共振訊息」與解讀
 
-如果同時間窗也看到：
-- PutObject latency 變差、或大量 PutObject
-- 或某些 disks 偶發 offline/timeout
+### 2.1 `ErrDisconnected`（client）
 
-我會立刻用下面這條最短鏈確認是不是 **quorum 過但留下洞**：
+```
+... ErrDisconnected
+```
 
-- PutObject：`erasureObjects.putObject()` 在 commit 後
-  - offline disk / versions disparity → `addPartial()` / `globalMRFState.addPartialOp()`
-- MRF consumer：`mrfState.healRoutine()`
-  - 出隊後呼叫 `HealObject()`
-- Healing：`erasureObjects.healObject()`
-  - `readAllFileInfo` → `erasure.Heal` → `RenameData`
+解讀：
+- 通常不是「網路突然壞」；而是對端太慢（CPU/disk 壓力）導致 pong/handler 超時。
 
-對應的錨點（同樣用 grep 釘死）：
+下一步：
+- 去對端對齊是否有 `canceling remote connection`（server watchdog）
+- 若只集中在 healing 相關 handler（例如 background heal status），直接往 healing 壓力（disk/CPU）查。
+
+
+### 2.2 `context deadline exceeded` / `i/o timeout`
+
+解讀：
+- 這兩個是最容易誤導你去查網路的訊息；但在 MinIO 內部 RPC/streaming 場景，**handler 排隊/卡住**也會呈現類似 timeout。
+
+下一步：
+- 一律先把 disk/CPU 的「能否在 30 秒內否決」做完：
+  - `iostat -x 1` 看 await/%util
+  - `top`/`pidstat -u 1` 看 CPU throttling / steal
+
+
+### 2.3 PutObject 高壓期：rename/fsync 慢 → partial → MRF heal
+
+你可能在同一段時間看到：
+- PutObject latency 變長
+- MRF queue enqueue 或 drop
+- scanner/heal goroutine 變多
+
+把它釘回 code 的最短 grep（用來跨版本對齊）：
 ```bash
 cd /path/to/minio
 
-grep -RIn "func (er erasureObjects) addPartial" -n cmd/erasure-object.go
+# PutObject 主線
+grep -RIn "func (api objectAPIHandlers) PutObjectHandler" -n cmd/object-handlers.go
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
 
-grep -RIn "func (m \\*mrfState) healRoutine" -n cmd/mrf.go
+# rename/fsync 落點
+grep -RIn "func \(s \*xlStorage\) RenameData" -n cmd/xl-storage.go
 
-grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head
+# partial → MRF
+grep -n "func (er erasureObjects) addPartial" cmd/erasure-object.go
+grep -n "func (m \*mrfState) addPartialOp" cmd/mrf.go
+
+# MRF consumer → HealObject
+grep -n "func (m \*mrfState) healRoutine" cmd/mrf.go
+grep -RIn "func (z \*erasureServerPools) HealObject" -n cmd | head -n 40
 ```
 
 ---
 
-## 4) 我在事件筆記會固定收集的欄位（讓後續可回溯）
+## 3) 我遇到過最有用的「快速否決」手段
 
-- 版本資訊：
-  - MinIO `RELEASE.*` 或 `git rev-parse --short HEAD`
-- 觸發時間窗：`T ± 5m`
-- 兩端節點：`src node` / `dst node`
-- 同時間窗的背景任務：
-  - healing（admin/scanner/MRF）
-  - rebalance
-  - scanner/metacache rebuild
-- 資源數據：
-  - iostat（await/%util）
-  - load / steal / CPU saturation
-  - GC（若可：heap profile / goroutine dump）
-- 事件特徵：
-  - 是單一 peer 反覆斷，還是整群互斷？
-  - 是否伴隨 `ErrDisconnected` / `grid` RPC timeout / `context deadline exceeded`
+### 3.1 10–30 秒 strace：只盯 rename/fsync
+
+> 只建議短時間窗，用來回答一個問題：**是不是 rename/fsync 單次耗時已經到秒級？**
+
+```bash
+pidof minio
+sudo strace -fp <PID> -tt -T -e trace=rename,renameat,renameat2,fsync,fdatasync,unlink,openat 2>&1 | head -n 200
+```
+
+判讀：
+- 若 `renameat2/fsync/fdatasync` 的單次 `<...>` 明顯飆高，且 `iostat await/%util` 也一致升高：優先往 disk/FS（特定盤、journal、metadata 壓力、RAID cache、firmware）查。
+
+### 3.2 goroutine/pprof：看是不是卡在 RenameData/commit
+
+如果你有 pprof 或 stackdump：
+- 大量 goroutine 卡在 `xlStorage.RenameData` / `commitRenameDataDir` / `readAllFileInfo` 這種點，幾乎可以直接把方向鎖定在 disk/metadata。
 
 ---
 
-## 5) 我自己的判讀結論（寫 incident note 時的「一句話」模板）
+## 4) 建議你寫事件筆記的固定欄位（下次更快）
 
-> 在本次時間窗內，`canceling remote connection` 更像是 **節點資源壓力導致 ping handler 延遲** 的結果（常見來源：healing/rename/fsync/metadata ops），而非網路先壞；需優先對齊 healing/MRF/scanner 活躍度與磁碟 I/O await，並在 `xlStorage.RenameData` / `readAllFileInfo` / `erasureObjects.healObject` 堆疊上驗證。
+- 發生時間（含時區）
+- 哪兩台 node（client ↔ server）互相 cancel
+- 同時間是否有 healing/scanner/MRF/admin heal
+- `iostat -x 1` 摘要（await/%util）
+- 是否有重啟 / OOM / CPU throttling
