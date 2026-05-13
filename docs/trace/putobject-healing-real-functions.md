@@ -79,6 +79,38 @@ grep -RIn "func (s \\*erasureSets) PutObject" -n cmd/erasure-sets.go
 grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
 ```
 
+### A.3.1（補）在 pool/sets/objects 之間「最短可驗證 callchain」長什麼樣？
+
+> 目的：你在不同版本只要把下列函式逐個定位到，就能快速確認當前版本的 PutObject 實際落點（避免被 wrapper/metrics/trace 混淆）。
+
+**常見最短鏈（以 receiver 名稱為主，不綁行號）：**
+- `(*erasureServerPools).PutObject`（multi-pool）
+  - → `(*erasureServerPool).PutObject`（single pool）
+    - → `(*erasureSets).PutObject`（set routing / quorum）
+      - → `(erasureObjects).PutObject`（ObjectLayer implementation）
+        - → `(erasureObjects).putObject`（真正寫入：encode/write/rename/commit）
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# 逐段定位（先找到每段的函式定義，再看它呼叫誰）
+grep -RIn "func (z \\*erasureServerPools) PutObject" -n cmd/erasure-server-pool.go
+
+grep -RIn "func (p \\*erasureServerPool) PutObject" -n cmd/erasure-server-pool.go
+
+grep -RIn "func (s \\*erasureSets) PutObject" -n cmd/erasure-sets.go
+
+# 這段有時會在 cmd/erasure-object.go 或 cmd/erasure-object-layer.go（依版本）
+grep -RIn "func (er erasureObjects) PutObject" -n cmd | head -n 40
+
+# 最終一定會落到 putObject（真正動到 disk 的主線）
+grep -RIn "func (er erasureObjects) putObject" -n cmd | head -n 40
+
+# 反查：確認 (er erasureObjects) PutObject 最後呼叫 putObject（避免 alias 名稱不一致）
+grep -RIn "\\.putObject\\(" -n cmd/erasure-object*.go | head -n 120
+```
+
 ### A.4 PutObject 真正動到 disk 的三個關鍵點
 
 #### A.4.1（補）RenameData 最後落到哪個實作？
