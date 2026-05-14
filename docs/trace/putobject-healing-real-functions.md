@@ -298,6 +298,34 @@ grep -RIn "func (e Erasure) Heal" -n cmd | head -n 40
 grep -RIn "RenameData\\(" -n cmd/storage-interface.go cmd/xl-storage.go cmd/erasure-healing.go | head -n 120
 ```
 
+### B.5.1（補）把 Healing 的「rename/commit」callchain 釘死（從 healObject 一路到 syscall 熱點）
+
+> 你在 pprof/stackdump/strace 很常會看到 `(*xlStorage).RenameData` / `renameat2` / `fdatasync`，這段用來把它精準對回 healObject 的哪一步。
+
+**典型鏈（以函式名為主，不綁行號）：**
+- `(*erasureObjects).healObject(...)`
+  - → `renameData(...)`（fan-out）
+    - → `disk.RenameData(ctx, ...)`（StorageAPI）
+      - → `(*xlStorage).RenameData(ctx, ...)`（落到 FS rename/sync）
+  - → `commitRenameDataDir(...)`（可見性切換 / 最後 commit）
+
+Anchors：
+```bash
+cd /path/to/minio
+
+# healObject 內部呼叫 renameData/commit 的位置
+grep -RIn "func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
+
+grep -RIn "renameData\\(" -n cmd/erasure-healing.go | head -n 120
+grep -RIn "commitRenameDataDir" -n cmd/erasure-healing.go | head -n 120
+
+# renameData 會呼叫 disk.RenameData（StorageAPI interface）
+grep -RIn "\\.RenameData\\(ctx" -n cmd/erasure-healing.go cmd/erasure-object.go | head -n 200
+
+# 最終實作（syscall 熱點通常在這）
+grep -RIn "func \\(s \\*xlStorage\\) RenameData" -n cmd/xl-storage.go
+```
+
 ### B.6（補）healObject() 的「本地寫回」常用錨點（快速判斷卡在哪個階段）
 
 > 目的：你在 pprof/stackdump 看到 goroutine 卡住時，能一眼把它歸類到
