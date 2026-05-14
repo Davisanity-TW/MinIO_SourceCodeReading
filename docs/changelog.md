@@ -336,4 +336,5 @@
 - 2026-05-12 06:00 補強 canceling remote connection：quick triage 增加 ping handler 被 I/O 壓垮的判斷，新增 SIGQUIT goroutine dump signatures 筆記頁。
 - 2026-05-12 14:00（Asia/Taipei）：Trace：新增「PutObject/Healing 實際函式/檔案/呼叫鏈（已在 b413ff9fd 驗證）」頁（`docs/trace/putobject-healing-callchain-verified-b413ff9fd.md`）；Troubleshooting：新增 `canceling remote connection` 調查 playbook（`docs/troubleshooting/canceling-remote-connection-investigation-playbook.md`），把採證/分流/停損寫成固定流程。
 - 2026-05-13 14:00（Asia/Taipei）：Troubleshooting：新增「為什麼有時會看到/有時不會看到 `canceling remote connection`？」筆記頁（釘 `internal/grid/muxserver.go` 的 `DeadlineMS`/watchdog 啟用條件、`lastPingThreshold` 與最短 grep）。
+- 2026-05-14 14:00（Asia/Taipei）：Troubleshooting：在 `canceling-remote-connection-callchain-short.md` 補齊「LastPing 更新點（ping handler）+ 閾值計算（clientPingInterval/lastPingThreshold）+ watchdog 啟用條件（DeadlineMS）」三件事的最短 grep 錨點。
 

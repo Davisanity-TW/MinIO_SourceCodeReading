@@ -54,6 +54,40 @@ grep -RIn "checkRemoteAlive\(" -n internal/grid/muxserver.go | head -n 80
 grep -RIn "LastPing|lastPing|lastSeen" -n internal/grid/muxserver.go | head -n 120
 ```
 
+### 1.1.1（補齊實際函式/檔案/呼叫鏈）LastPing 是在哪裡更新的？閾值是多少？
+
+你要把 `canceling remote connection` 跟「ping 沒被處理」釘在一起，最省事的是同時釘 3 個點：
+
+1) **server 收到 ping 時更新 LastPing 的 handler**（`atomic.StoreInt64(&m.LastPing, time.Now().Unix())` 這類 pattern）
+- 檔案：`internal/grid/muxserver.go`
+- 常見函式名：`(*muxServer).ping(...)`
+
+2) **閾值如何算出來**（為什麼 log 裡常看到 ~60s）
+- 檔案：`internal/grid/grid.go` / `internal/grid/muxserver.go`
+- 常見 pattern：
+  - `clientPingInterval = 15 * time.Second`
+  - `lastPingThreshold = 4 * clientPingInterval`（→ 60s）
+
+3) **watcher 啟用條件**：有些 streaming mux 只有在 deadline 夠長/沒有 deadline 才會起 `checkRemoteAlive()` goroutine
+- 檔案：`internal/grid/muxserver.go`
+- 常見關鍵字：`DeadlineMS` / `lastPingThreshold`
+
+把以上 3 個錨點釘死（不靠行號）：
+```bash
+cd /path/to/minio
+
+# (1) ping handler：LastPing 更新點
+grep -RIn "func (.*) ping\(" -n internal/grid/muxserver.go | head -n 80
+grep -RIn "LastPing" -n internal/grid/muxserver.go | head -n 120
+
+# (2) threshold 計算（15s/60s 這類常數）
+grep -RIn "clientPingInterval" -n internal/grid | head -n 80
+grep -RIn "lastPingThreshold" -n internal/grid | head -n 80
+
+# (3) watcher 啟用條件（跟 DeadlineMS 綁在一起）
+grep -RIn "DeadlineMS" -n internal/grid/muxserver.go | head -n 120
+```
+
 你接下來要追的關鍵不是「為什麼它要關」，而是：**LastPing 為什麼沒有被更新？**
 - 如果 ping handler goroutine 卡住（I/O、CPU、runtime 排程、GC STW），LastPing 就不會更新
 - 如果 network path 真的斷（packet loss/conn reset），LastPing 也不會更新
