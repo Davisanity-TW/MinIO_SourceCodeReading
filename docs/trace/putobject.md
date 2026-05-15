@@ -8,6 +8,37 @@
 
 ---
 
+## 快速錨點（以 workspace `/home/ubuntu/clawd/minio` 為準）
+
+> 若你要補「PutObject/commitRenameDataDir/renameData」的 *實際函式 + 檔案*，最省時間的方式是先把目前你對照的 MinIO commit 釘死。
+>
+> workspace MinIO HEAD：`b413ff9fd`
+>
+> - `cmd/object-handlers.go:1987`：`(api objectAPIHandlers) PutObjectHandler()`
+> - `cmd/erasure-server-pool.go:1056`：`(z *erasureServerPools) PutObject()`
+> - `cmd/erasure-sets.go:766`：`(s *erasureSets) PutObject()`
+> - `cmd/erasure-object.go:1242`：`(er erasureObjects) PutObject()`
+> - `cmd/erasure-object.go:1247`：`(er erasureObjects) putObject()`（heavy path）
+> - `cmd/erasure-object.go:1015`：`renameData(...)`（tmp → 正式路徑）
+> - `cmd/erasure-object.go:1785`：`(er erasureObjects) commitRenameDataDir()`（完成 DataDir 切換）
+> - `cmd/xl-storage.go:2456`：`(s *xlStorage) RenameData()`（storage 層落地 rename）
+>
+> 自己重抓（避免行號飄）：
+> ```bash
+> cd /home/ubuntu/clawd/minio
+> git rev-parse --short HEAD
+>
+> grep -n "func (api objectAPIHandlers) PutObjectHandler" cmd/object-handlers.go
+> grep -n "func (z \\*erasureServerPools) PutObject" cmd/erasure-server-pool.go
+> grep -n "func (s \\*erasureSets) PutObject" cmd/erasure-sets.go
+> grep -n "func (er erasureObjects) PutObject" cmd/erasure-object.go
+> grep -n "func (er erasureObjects) putObject" cmd/erasure-object.go
+>
+> grep -n "^func renameData" cmd/erasure-object.go
+> grep -n "commitRenameDataDir" cmd/erasure-object.go
+> grep -n "func (s \\*xlStorage) RenameData" cmd/xl-storage.go
+> ```
+
 ## 1) HTTP 入口：S3 handler
 
 - 檔案：`cmd/object-handlers.go`
