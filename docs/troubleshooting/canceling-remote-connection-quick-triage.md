@@ -1,100 +1,115 @@
-# canceling remote connection：快速分流（網路 vs I/O/背景任務）
+# Troubleshooting：`canceling remote connection` 快速排查清單（MinIO）
 
-> 用途：你在現場只看到這句 log：
+> 目標：當你在 MinIO log 看到大量 `canceling remote connection`（grid / internode）時，用「先分流、再下鑽」的方法在 10–30 分鐘內把方向收斂。
 >
-> `WARNING: canceling remote connection A:9000->B:9000 not seen for 1m2.3s`
->
-> 想在 **10–15 分鐘內**先把方向分成「偏網路」或「偏對端忙（I/O/背景任務/GC）」。
->
-> 更完整背景與 code anchors：
-> - `docs/troubleshooting/canceling-remote-connection.md`
-> - `docs/troubleshooting/canceling-remote-connection-codepath.md`
->
-> （補）若同時間窗也有 PutObject latency 變差、或 healing/scanner/MRF 明顯活躍，建議直接一起對照：`docs/trace/putobject-healing.md`（PutObject partial → MRF → HealObject → `RenameData()` 的 I/O 共振鏈）。
+> 這個錯誤訊息本身**不等於網路壞**。在多數事故裡，它更像是「某個 node/handler 長時間沒處理 ping/pong 或 RPC」的症狀；根因常見是 **I/O 壓力、CPU/GC、goroutine backlog**，以及 *PutObject/Healing/MRF* 的負載共振。
+
+關聯頁：
+- Trace：`docs/trace/putobject.md`（PutObject rename/commit 熱點）
+- Trace：`docs/trace/healing.md`（Healing/MRF → HealObject → `.minio.sys/tmp` → `RenameData()`）
+- Troubleshooting：`docs/troubleshooting/canceling-remote-connection-root-causes.md`
 
 ---
 
-## 0) 先固定三個欄位（每次 incident 都照抄）
-- **time window**：`T ± 5m`
-- **local->remote**：`A:9000 -> B:9000`（A = 印 log 的節點；B = 被 cancel 的對端）
-- **not seen for**：`~60s`（多數版本是 `lastPingThreshold = 4 * clientPingInterval = 4 * 15s`）
+## 0) 先做「快速分流」（15 分鐘內要完成）
 
-> 若 `not seen for` 明顯不是 ~60s：優先把 **時鐘/NTP 跳動** 納入排查（`time.Since(time.Unix(LastPing,0))` 會受系統時間回撥/校時影響）。
+把 incident 當下分成三類（你只要先判對類別，後面就不會浪費時間）：
 
-### 0.1（補）你看到的可能不只一種「斷線訊息」：先分清 client vs server
+### A. 真正的網路/連線問題（少數但要快）
+常見徵象：
+- 同時出現 `connection reset by peer`、`broken pipe`、TLS handshake error、packet loss
+- 同一組 node pair 在**低負載**也會重現
+- system 層面看到 NIC flap / switch errors
 
-- **server log** 常見：`canceling remote connection ... not seen for ...`
-  - 代表 server 端 watchdog 覺得 **LastPing** 沒更新（多數版本 ~60s）
-- **client log/stack** 常見：`ErrDisconnected` / `context deadline exceeded` / `peer down`
-  - 代表 client 端較短的容忍（常見 ~30s）先放棄
+你要先抓：
+- node 間 RTT、packet loss（最好雙向）
+- kube/host network events（CNI、conntrack）
 
-現場最省時間的作法：同一個時間窗在兩邊各 grep 一次，確認哪邊先發生：
-```bash
-# server 端（印 canceling 的那台）
-grep -R "canceling remote connection" /var/log/minio* 2>/dev/null | tail -n 50
+> 若 A 成立：先處理網路；其他排查先暫停。
 
-# client 端（發起 peer RPC 的那台；可能先看到 ErrDisconnected）
-grep -R "ErrDisconnected" /var/log/minio* 2>/dev/null | tail -n 50
-```
+### B. I/O 壓力導致的「grid 心跳跟不上」（非常常見）
+常見徵象：
+- 同時看到 PutObject latency 變長、disk latency 飆升
+- `.minio.sys/tmp` 寫入暴增
+- healing/MRF/scanner 活躍
 
-> 讀碼錨點請看：`docs/troubleshooting/canceling-remote-connection-codepath.md`（LastPing/LastPong/threshold）。
+優先看：
+- 單顆 disk latency / util / queue depth
+- pprof：大量 goroutine 卡在 fsync/rename/readDir
 
----
+### C. CPU/GC/排程壓力導致 handler 飢餓（也很常見）
+常見徵象：
+- CPU 接近飽和或 throttling（容器/主機）
+- Go GC time 上升、STW spikes
+- goroutine 數暴增（尤其 net/http / grid / erasure read/write）
 
-## 1) 10 分鐘三件套（最省時間、最常有效）
-
-### 1.1 local 節點：看 TCP retrans/RTO（偏網路）
-```bash
-ss -tiH '( sport = :9000 or dport = :9000 )' | head -n 120
-```
-- `retrans` / `rto` 明顯上升：偏 **網路/CNI/conntrack/MTU**
-
-### 1.2 remote 節點：看磁碟 latency（偏 I/O/資源）
-```bash
-iostat -x 1 3
-```
-- `await` 高、`%util` 高：偏 **I/O 壓力**（常見共振：healing/scanner/MRF/rebalance）
-
-### 1.2.1（新增）如果同一組 `A->B` 幾乎「每分鐘」都被 cancel：優先驗證是不是 ping handler 跑不動（而不是真掉包）
-現場常見誤判是：看到 `not seen for ~60s` 就直覺當成網路問題。但其實 server 端的 LastPing 更新點在：
-- `internal/grid/connection.go`：`case OpPing` → `handlePing(...)`
-- `internal/grid/muxserver.go`：`(*muxServer).ping()` → `atomic.StoreInt64(&m.LastPing, time.Now().Unix())`
-
-如果 remote 節點在同時間窗有：
-- healing/scanner/MRF 大量跑
-- `iostat` await/%util 尖峰
-- 或 CPU throttling / goroutine 爆量
-
-那更可能是 **remote 忙到 ping handler 排不到**（LastPing 沒更新）→ watchdog 觸發 `checkRemoteAlive()`。
-
-特別常見的「共振訊號」（有看到就把 I/O 排在網路前面查）：
-- 同窗出現 `slow disk` / `iowait` 尖峰
-- PutObject latency 變長、甚至開始堆 MRF/healing
-- stack/pprof 看到大量 goroutine 卡在 `RenameData()`、`fsync`、`renameat2`、`readAllFileInfo()` 這類 I/O 端點
-
-最便宜的「快速佐證」：對 remote 節點抓一次 goroutine dump（SIGQUIT），看是否大量卡在 `RenameData()`/`fsync`/`readAllFileInfo()`/`erasure.Heal()` 這類路徑（詳見：`canceling-remote-connection-sigquit-stackdump.md`）。
-
-### 1.3 任一節點：看 MinIO internal trace 的 grid 熱點（偏「誰把 grid 拖慢」）
-```bash
-mc admin trace --type internal --json <ALIAS> \
-  | jq -r 'select(.funcName|startswith("grid."))
-           | [.time,.nodeName,.funcName,.path,.error,.duration] | @tsv'
-```
-- `grid.*` duration 明顯拉長：偏 **對端忙/handler 排隊**（不是單純 TCP 立刻斷）
+優先看：
+- CPU throttling / load average
+- Go runtime 指標（若有暴露）：gc pause、heap、goroutines
 
 ---
 
-## 2) 判讀小抄（粗但很好用）
-- **retrans/RTO 明顯**、但 remote I/O 不高 → 先查：MTU、CNI drop、conntrack、LB/中間設備 idle timeout
-- **retrans 不高**，但 remote I/O 高、且同窗有 healing/scanner/MRF → 先查：healing 的 I/O 點（`erasure.Heal` / `RenameData`）、scanner、MRF queue
-- 三個都不明顯 → 把 **NTP/時鐘跳動** 放回優先序（同窗是否有 chrony step/slew）
+## 1) 先對齊「同時間還發生什麼」（把關聯拉出來）
+
+把 `canceling remote connection` 的時間窗（例如 5–10 分鐘）對齊：
+- **PutObject** QPS/latency
+- **Healing/MRF**（是否 spike、是否有 retry）
+- **disk**：latency/util，是否某幾顆盤特別差
+- **node**：CPU/Memory/GC
+
+如果你看到它跟以下任一項同步，很高機率根因不在網路：
+- PutObject 尾端 commit（rename/fsync）變慢
+- Healing 的 `erasure.Heal()` 或 `RenameData()` 變慢
+- 某顆盤 intermittently timeout（造成 read quorum 勉強過、後面一直補洞）
 
 ---
 
-## 3) 最短「因果鏈」模板（incident note 可直接貼）
-> 同時間窗（T±5m）觀察到：healing/scanner/MRF 活躍 + disk await/%util 尖峰；推測 I/O/排程壓力導致 grid streaming mux 心跳（LastPing）更新延遲，觸發 `checkRemoteAlive()` 印出 `canceling remote connection ... not seen for ~60s`。
+## 2) 最有效的「程式碼錨點」（用來把現象對回 call chain）
 
-對照讀碼：
-- `internal/grid/muxserver.go: (*muxServer).checkRemoteAlive()`
-- `cmd/erasure-healing.go: (*erasureObjects).healObject()`（`erasure.Heal` + `RenameData`）
-- `cmd/mrf.go: (*mrfState).healRoutine()`（若是 PutObject partial → MRF）
+> 你不需要在 incident 期間完整讀碼；你只要知道「卡住時會卡在哪幾個函式」。
+
+### PutObject（寫入成功/留洞/rename commit）
+- `cmd/object-handlers.go`：`PutObjectHandler`
+- `cmd/erasure-object.go`：`(er erasureObjects) putObject()`
+- `cmd/erasure-object.go`：`renameData(...)` / `commitRenameDataDir()`
+- `cmd/xl-storage.go`：`(s *xlStorage) RenameData(...)`
+
+### Healing/MRF（補洞/重建/rename commit）
+- `cmd/mrf.go`：`(m *mrfState) healRoutine(...)`（MRF consumer）
+- `cmd/erasure-healing.go`：`(*erasureObjects) healObject(...)`
+  - `readAllFileInfo(...)`（metadata fan-out）
+  - `erasure.Heal(...)`（RS reconstruct）
+  - `disk.RenameData(...)`（把 `.minio.sys/tmp` commit 成正式路徑）
+
+> 你只要能把 incident 的 I/O 圖（讀/寫/rename/fsync）對到這些點，後續就能針對性 profile。
+
+---
+
+## 3) 現場操作建議（順序）
+
+1) **先確認是否同時有 healing/MRF/scanner 在跑**
+   - 若有：先把排查重心放在 I/O 與 `RenameData()` / `.minio.sys/tmp`。
+
+2) **抓 pprof/trace（如果環境允許）**
+   - 看 goroutine 堆疊是否集中在：
+     - `RenameData` / `renameat2` / `fsync`
+     - `readAllFileInfo` / `ReadFile` / `readdir`
+     - `erasure.Heal`
+
+3) **找出「最差的那幾顆 disk」**
+   - 很多事故不是整體吞吐不足，而是少數盤 latency 長尾拖垮。
+
+4) **把 `canceling remote connection` 當成「資源飢餓」訊號來解讀**
+   - 先確認 node 是否被 I/O wait 或 CPU throttling 壓住。
+
+---
+
+## 4) 你最後應該在 incident note 留下的最小資訊集
+
+- 發生時間窗、影響範圍（哪些 nodes / pools / sets）
+- 同時間 PutObject QPS/latency 變化
+- 是否有 healing/MRF 活躍（以及 queue / retry / drop 跡象）
+- Top 3 disk latency（含最差盤）
+- pprof/stack 是否顯示 `RenameData`/`fsync`/`readAllFileInfo` 集中
+
+> 有了這組資料，後續要寫「可重現/可驗證」的根因分析會快非常多。

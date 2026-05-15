@@ -341,3 +341,4 @@
 - 2026-05-14 14:00（Asia/Taipei）：Troubleshooting：在 `canceling-remote-connection-callchain-short.md` 補齊「LastPing 更新點（ping handler）+ 閾值計算（clientPingInterval/lastPingThreshold）+ watchdog 啟用條件（DeadlineMS）」三件事的最短 grep 錨點。
 - 2026-05-14 22:00（Asia/Taipei）：Troubleshooting：新增「`canceling remote connection` 常與 PutObject/Healing I/O 壓力同窗」筆記頁（新頁 `docs/troubleshooting/canceling-remote-connection-when-healing-io-pressure.md`），整理來源/閾值/驗證方式與 10 分鐘 triage 證據集。
 
+- 2026-05-15 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 快速分流/最小資訊集筆記頁（新頁 `docs/troubleshooting/canceling-remote-connection-quick-triage.md`），把 incident 10–30 分鐘內的收斂流程固定化。
