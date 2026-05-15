@@ -120,6 +120,38 @@ grep -RIn "func (er \\*erasureObjects) healObject" -n cmd/erasure-healing.go
 >
 > 這些更細的錨點仍建議回 `docs/trace/putobject-healing-callchain.md`（它整理得比較完整）。
 
+### 2.4 healing/PutObject 兩個最常被堆疊打到的 I/O 錨點（本機 commit b413ff9fd 可直接跳）
+
+#### A) xl.meta fan-out：readAllFileInfo()
+
+- 檔案：`cmd/erasure-metadata-utils.go`
+- 函式：`func readAllFileInfo(ctx context.Context, disks []StorageAPI, origbucket string, bucket, object, versionID string, readData, healing bool) ([]FileInfo, []error)`
+- 本版行號：`cmd/erasure-metadata-utils.go:182`
+
+快速定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func readAllFileInfo" -n cmd/erasure-metadata-utils.go
+```
+
+> 這個函式會對每顆 disk 併發 `ReadVersion()`，因此在磁碟 tail latency 拉長時很容易把整段 healing/PutObject 放大。
+
+#### B) tmp → 正式（rename/fsync 熱點）：renameData()
+
+- 檔案：`cmd/erasure-object.go`
+- 函式：`func renameData(ctx context.Context, disks []StorageAPI, srcBucket, srcEntry string, metadata []FileInfo, dstBucket, dstEntry string, writeQuorum int) ([]StorageAPI, []byte, string, error)`
+- 本版行號：`cmd/erasure-object.go:1015`
+
+快速定位：
+```bash
+cd /home/ubuntu/clawd/minio
+
+grep -RIn "func renameData(ctx context.Context" -n cmd/erasure-object.go
+```
+
+> 你在 pprof / SIGQUIT 很常看到 `(*xlStorage).RenameData()` 或 `StorageAPI.RenameData()`，往上回溯到 PutObject 端，多半就是這個 helper（+ 後面的 `commitRenameDataDir()`）。
+
 ---
 
 ## 3) `canceling remote connection`（internal/grid）實際位置（與 healing/PutObject 壓力同窗時常一起出現）
