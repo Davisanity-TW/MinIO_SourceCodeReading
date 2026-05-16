@@ -343,3 +343,5 @@
 - 2026-05-14 22:00（Asia/Taipei）：Troubleshooting：新增「`canceling remote connection` 常與 PutObject/Healing I/O 壓力同窗」筆記頁（新頁 `docs/troubleshooting/canceling-remote-connection-when-healing-io-pressure.md`），整理來源/閾值/驗證方式與 10 分鐘 triage 證據集。
 
 - 2026-05-15 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 快速分流/最小資訊集筆記頁（新頁 `docs/troubleshooting/canceling-remote-connection-quick-triage.md`），把 incident 10–30 分鐘內的收斂流程固定化。
+
+- [2026-05-16] Add quick triage page for `canceling remote connection`; add PutObject trace cross-link.

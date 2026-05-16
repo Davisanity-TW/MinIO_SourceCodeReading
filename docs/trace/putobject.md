@@ -4,6 +4,7 @@
 >
 > 關聯：
 > - `docs/trace/putobject-healing-callchain-cheatsheet.md`（PutObject 留洞 → MRF 補洞 → grid watchdog）
+> - `docs/trace/putobject-healing-real-functions.md`（把「call chain」對到更細的實際 helper/檔案）
 > - `docs/trace/healing.md`（Healing 全景）
 
 ---
