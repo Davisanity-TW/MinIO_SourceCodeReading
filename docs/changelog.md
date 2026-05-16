@@ -345,3 +345,5 @@
 - 2026-05-15 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 快速分流/最小資訊集筆記頁（新頁 `docs/troubleshooting/canceling-remote-connection-quick-triage.md`），把 incident 10–30 分鐘內的收斂流程固定化。
 
 - [2026-05-16] Add quick triage page for `canceling remote connection`; add PutObject trace cross-link.
+
+- 2026-05-16 22:01：補 PutObject/Healing 尾端 commitRenameDataDir 的 grep 錨點；新增 canceling remote connection 最小驗證清單（minimal repro checks）。

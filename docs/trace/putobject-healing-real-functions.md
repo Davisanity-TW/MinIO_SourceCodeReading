@@ -409,3 +409,55 @@ grep -RIn "clientPingInterval" -n internal/grid | head -n 80
 
 延伸（把 internal/grid 的實際函式/檔案/最短驗證流程補齊）：
 - `docs/trace/grid-canceling-remote-connection.md`
+
+---
+
+## D) （新增）commitRenameDataDir：PutObject/Healing 最後「對外可見」的切換點（rename/commit 尾端 latency 常見熱區）
+
+> 目的：現場常見症狀是「資料片看起來都寫完了，但 client 還在等、或 quorum/lock 還沒回」；這通常落在 **rename/commit（metadata 可見性切換）** 的最後一段。
+>
+> 這一節把 helper / 呼叫點釘成「可 grep 對齊」的錨點：你拿任何一個 release tag/fork，只要把這些點對起來，就能快速確認尾端 commit 是否跟你看到的 fsync/rename 熱點一致。
+
+### D.1 helper 定義：commitRenameDataDir
+
+- `cmd/erasure-object.go`：`commitRenameDataDir(...)`
+
+Anchors：
+```bash
+cd /path/to/minio
+
+grep -RIn "commitRenameDataDir" -n cmd/erasure-object.go | head -n 120
+```
+
+### D.2 PutObject 端：putObject() 內的典型順序（renameData → commitRenameDataDir）
+
+- `cmd/erasure-object.go`
+  - `func (er erasureObjects) putObject(...)`
+  - 常見順序：`renameData(...)` → `commitRenameDataDir(...)`
+
+Anchors：
+```bash
+cd /path/to/minio
+
+grep -RIn "func (er erasureObjects) putObject" -n cmd/erasure-object.go
+
+# 看 putObject() 內部呼叫 rename/commit 的位置（不綁行號，只看相對順序）
+grep -RIn "renameData\(" -n cmd/erasure-object.go | head -n 200
+grep -RIn "commitRenameDataDir" -n cmd/erasure-object.go | head -n 200
+```
+
+### D.3 Healing 端：healObject() 也會走 rename/commit（同一組 helper / 同一類 syscall 熱點）
+
+- `cmd/erasure-healing.go`
+  - `func (er *erasureObjects) healObject(...)`
+  - 常見順序：寫回 data/xl.meta → `renameData(...)` → `commitRenameDataDir(...)`
+
+Anchors：
+```bash
+cd /path/to/minio
+
+grep -RIn "func (er \*erasureObjects) healObject" -n cmd/erasure-healing.go
+
+grep -RIn "renameData\(" -n cmd/erasure-healing.go | head -n 200
+grep -RIn "commitRenameDataDir" -n cmd/erasure-healing.go | head -n 200
+```
