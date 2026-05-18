@@ -1,3 +1,4 @@
+- 2026-05-18 14:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-log-to-code.md`，把 `canceling remote connection ... not seen for ...` 精準釘到 `internal/grid/muxserver.go`（`checkRemoteAlive()` / `LastPing` / `lastPingThreshold`），並整理成可操作的分流排查 checklist（網路 vs peer 忙/IO/CPU）。
 - 2026-05-18 06:00（Asia/Taipei）：Trace：新增 `docs/trace/putobject-healing-callchain-file-anchors.md`，整理 PutObject/Healing 交會點的『實際函式/檔案』定位索引（用固定 grep 關鍵字取代死背檔名），作為後續補行號 anchors 的入口。
 - 2026-05-17 14:00（Asia/Taipei）：Troubleshooting：新增 `docs/troubleshooting/canceling-remote-connection-one-page-playbook.md`，把 `canceling remote connection` 濃縮成一頁版 playbook（10 分鐘分流：網路 vs 對端忙/I\u002fO；附最短 anchors/grep pack + 連回 PutObject/Healing trace）。
 - 2026-05-16 06:01（Asia/Taipei）：Trace/Troubleshooting：更新 `docs/trace/putobject-healing-callchain-verified-b413ff9fd.md`，把 healing/PutObject 最常見的 I/O 熱點（`readAllFileInfo()` / `renameData()`）補成可直接跳的「實際檔案/函式/行號」錨點（commit `b413ff9fd`）。
