@@ -251,3 +251,16 @@ grep -n "func (m \\*mrfState) healRoutine" cmd/mrf.go
 grep -RIn "func (z \\*erasureServerPools) HealObject" -n cmd | head -n 40
 ```
 
+### 6.4 你可能會一起看到的「I/O stall 指紋」（看到就優先查 rename/fsync/metadata）
+
+這類訊息常跟 `canceling remote connection` 同窗出現，因為本質上都是 **對端太忙（I/O tail latency）** 造成的連線 watchdog/timeout：
+
+- `renameat2 ...` / `fsync` / `fdatasync` 相關 slow syscall（通常在 strace 或 pprof stack 看到）
+- `InsufficientWriteQuorum` / `Storage resources are insufficient for the write operation`
+- `drive not found` / `offline` / `quorum` 類訊息（某顆 disk 變慢或暫時不可用）
+
+最小佐證手段（不依賴 Prometheus）：
+1) 10–30 秒短窗 `strace` 看 `renameat2/fsync/fdatasync` 是否秒級
+2) 同時間 `iostat -x 1` 找出 await/%util 異常的盤
+3) goroutine dump/pprof 對齊 `xlStorage.RenameData` / `commitRenameDataDir` / `readAllFileInfo`
+
