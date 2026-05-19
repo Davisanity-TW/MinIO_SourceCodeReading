@@ -356,3 +356,4 @@
 
 - 2026-05-17 22:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 與 PutObject/Healing 共振時的「訊號/判讀/下一步」頁（新頁 `canceling-remote-connection-with-putobject-healing-signals.md`），集中 rename/fsync、MRF、healObject 對齊錨點與最小收斂流程。
 - 2026-05-18 22:00（Asia/Taipei）：Troubleshooting：新增「`canceling remote connection` 常見根因是 I/O latency/rename-fsync stall/healing 壓力」的一頁式排查筆記（新頁 `canceling-remote-connection-when-io-latency-spikes.md`）。
+- 2026-05-20 06:00（Asia/Taipei）：Troubleshooting：新增 `canceling remote connection` 的「log signature → code 錨點 → 最小採證集」速查頁（新頁 `docs/troubleshooting/canceling-remote-connection-log-signatures.md`）。
