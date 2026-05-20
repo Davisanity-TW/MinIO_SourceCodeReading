@@ -142,6 +142,10 @@ grep -RIn "func (er \\*erasureObjects) healObject" -n cmd | head -n 40
 
 ### 3.1 HealObject 最短 call chain（把「背景修復」對回真正 I/O 熱點）
 
+> （補強）實務上你常需要把 healing 觸發的 *file I/O* 跟 PutObject 的 *rename/fsync 熱點* 分開：
+> - 如果 pprof/stack 主要落在 `cmd/erasure-healing.go`，多半是 healing 自己在打滿磁碟
+> - 如果主要落在 `cmd/erasure-object.go` 的 `renameData/commitRenameDataDir`，通常是 PutObject 的 commit 段拖垮節點，進而連帶讓 grid keepalive 失真
+
 > 現場你最常想回答的是：「現在是 *誰* 在觸發 healing？最後落在哪些 disk I/O？」
 > 下面這條鏈用來把 log/pprof/stack 對回到 source tree。
 
