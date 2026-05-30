@@ -11,6 +11,7 @@
 - [系統總覽](/architecture/overview)
 - [Trace/流程筆記](/trace/putobject)
 - [Troubleshooting](/troubleshooting/canceling-remote-connection)
+  - [`cycle_complete_times` 停在舊日期](/troubleshooting/scanner-cycle-complete-times-stale)
   - [Storage resources are insufficient for the read operation（InsufficientReadQuorum）](/troubleshooting/storage-resources-insufficient-read-operation)
   - [Storage resources are insufficient for the write operation（InsufficientWriteQuorum）](/troubleshooting/storage-resources-insufficient-write-operation)
 - [更新日誌](/changelog)

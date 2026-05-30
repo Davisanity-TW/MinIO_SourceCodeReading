@@ -46,6 +46,7 @@ export default defineConfig({
         text: 'Troubleshooting',
         items: [
           { text: 'canceling remote connection', link: '/troubleshooting/canceling-remote-connection' },
+          { text: 'scanner cycle_complete_times 停更', link: '/troubleshooting/scanner-cycle-complete-times-stale' },
           { text: 'Storage resources are insufficient (Read/InsufficientReadQuorum)', link: '/troubleshooting/storage-resources-insufficient-read-operation' },
           { text: 'Storage resources are insufficient (Write/InsufficientWriteQuorum)', link: '/troubleshooting/storage-resources-insufficient-write-operation' }
         ]
