@@ -10,6 +10,7 @@
 - [讀碼計畫](/reading-plan)
 - [系統總覽](/architecture/overview)
 - [Trace/流程筆記](/trace/putobject)
+  - [Namespace scanner / full scan / bitrot scan](/trace/namespace-scanner-fullscan-bitrot)
 - [Troubleshooting](/troubleshooting/canceling-remote-connection)
   - [`cycle_complete_times` 停在舊日期](/troubleshooting/scanner-cycle-complete-times-stale)
   - [Storage resources are insufficient for the read operation（InsufficientReadQuorum）](/troubleshooting/storage-resources-insufficient-read-operation)

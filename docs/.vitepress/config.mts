@@ -37,6 +37,7 @@ export default defineConfig({
         items: [
           { text: 'PutObject', link: '/trace/putobject' },
           { text: 'Healing', link: '/trace/healing' },
+          { text: 'Namespace scanner / full scan / bitrot scan', link: '/trace/namespace-scanner-fullscan-bitrot' },
           { text: 'PutObject vs Healing', link: '/trace/putobject-healing' },
           { text: 'Admin Heal', link: '/trace/admin-heal' }
         ]
